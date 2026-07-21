@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "sirms-backend"
 version = "0.1.0"
@@ -17,6 +21,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.35",
     "structlog>=24.4.0",
     "uvicorn[standard]>=0.30.6",
+    "click>=8.1.7",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +35,9 @@ dev = [
 export = [
     "openpyxl>=3.1.5",
 ]
+
+[tool.setuptools]
+packages = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

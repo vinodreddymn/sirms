@@ -86,10 +86,10 @@ JOIN master.asset_subcategories s ON s.code = v.subcategory_code
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO master.asset_status (code, name, description, display_order) VALUES
-('IN_STOCK', 'In Stock', 'Available in store', 1),
-('INSTALLED', 'Installed', 'Installed and active', 2),
-('UNDER_REPAIR', 'Under Repair', 'Under repair', 3),
-('SCRAPPED', 'Scrapped', 'Disposed asset', 4)
+('IN_STOCK', 'In Stock', 'Current operating state: available in store', 1),
+('INSTALLED', 'Installed', 'Current operating state: installed at a site', 2),
+('UNDER_REPAIR', 'Under Repair', 'Current operating state: temporarily unavailable for repair', 3),
+('SCRAPPED', 'Scrapped', 'Current operating state: disposed and unavailable', 4)
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO master.asset_condition (code, name, description, display_order) VALUES
@@ -100,11 +100,12 @@ INSERT INTO master.asset_condition (code, name, description, display_order) VALU
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO master.asset_lifecycle (code, name, description, display_order) VALUES
-('PROCURED', 'Procured', 'Procured but not yet installed', 1),
-('COMMISSIONED', 'Commissioned', 'Commissioned and active', 2),
-('IN_SERVICE', 'In Service', 'Operational in field', 3),
-('REPAIR', 'Repair', 'Under repair lifecycle stage', 4),
-('RETIRED', 'Retired', 'Retired from service', 5)
+('PROCURED', 'Procured', 'Lifecycle stage: acquired and awaiting commissioning', 1),
+('COMMISSIONED', 'Commissioned', 'Lifecycle stage: accepted and commissioned for use', 2),
+('IN_SERVICE', 'In Service', 'Lifecycle stage: part of the active asset portfolio', 3),
+('DECOMMISSIONED', 'Decommissioned', 'Lifecycle stage: removed from service and awaiting retirement or disposal', 4),
+('RETIRED', 'Retired', 'Lifecycle stage: permanently removed from service', 5),
+('DISPOSED', 'Disposed', 'Lifecycle stage: formally disposed after retirement', 6)
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO master.maintenance_types (code, name, description, display_order) VALUES
@@ -157,7 +158,8 @@ ON CONFLICT (code) DO NOTHING;
 INSERT INTO master.relationship_types (code, name, description, display_order) VALUES
 ('CONNECTED_TO', 'Connected To', 'Connected to related asset', 1),
 ('POWERED_BY', 'Powered By', 'Receives power from related asset', 2),
-('MOUNTED_ON', 'Mounted On', 'Mounted on related asset', 3)
+('MOUNTED_ON', 'Mounted On', 'Mounted on related asset', 3),
+('PARENT_OF', 'Parent Of', 'Logical parent asset relationship', 4)
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO master.document_types (code, name, description, display_order) VALUES

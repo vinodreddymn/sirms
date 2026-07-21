@@ -20,6 +20,7 @@ async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> ORJSONResponse:
+    status_code = 404 if any(error["loc"][0] == "path" for error in exc.errors()) else 400
     response = ApiResponse[None](
         success=False,
         message="Validation error",
@@ -29,4 +30,4 @@ async def validation_exception_handler(
         ],
         request_id=getattr(request.state, "request_id", None),
     )
-    return ORJSONResponse(status_code=422, content=response.model_dump(mode="json"))
+    return ORJSONResponse(status_code=status_code, content=response.model_dump(mode="json"))

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+from starlette.requests import Request
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
@@ -20,6 +21,10 @@ from app.middleware.request_id import request_id_middleware
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     yield
     await dispose_engine()
+
+
+async def unhandled_exception_handler(_: Request, __: Exception) -> ORJSONResponse:
+    return ORJSONResponse(status_code=500, content={"detail": "An unexpected server error occurred"})
 
 
 def create_app() -> FastAPI:
@@ -45,6 +50,7 @@ def create_app() -> FastAPI:
 
     app.add_exception_handler(AppException, app_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
 

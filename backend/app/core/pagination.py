@@ -9,7 +9,7 @@ T = TypeVar("T")
 
 class PaginationParams(BaseModel):
     page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=20, ge=1, le=100)
+    page_size: int = Field(default=20, ge=1, le=1000)
     sort: str | None = None
     order: str = Field(default="asc", pattern="^(asc|desc)$")
     search: str | None = None
@@ -21,7 +21,7 @@ class PaginationParams(BaseModel):
 
 def pagination_params(
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(default=20, ge=1, le=1000),
     sort: str | None = None,
     order: str = Query(default="asc", pattern="^(asc|desc)$"),
     search: str | None = None,

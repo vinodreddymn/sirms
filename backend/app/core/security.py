@@ -24,7 +24,7 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 
 def create_token(subject: str, expires_delta: timedelta, extra_claims: dict[str, Any] | None = None) -> str:
     settings = get_settings()
-    expires_at = datetime.now(UTC) + expires_delta
+    expires_at = datetime.utcnow() + expires_delta
     payload: dict[str, Any] = {"sub": subject, "exp": expires_at}
     if extra_claims:
         payload.update(extra_claims)
