@@ -146,6 +146,17 @@ export interface AssetDetails {
     installed_on?: string | null;
     removed_on?: string | null;
     current_flag: boolean;
+    installation_status?: string | null;
+    remarks?: string | null;
+    // Fixed infrastructure — belongs to the Position
+    power_source?: string | null;
+    electrical_panel?: string | null;
+    network_switch?: string | null;
+    switch_port?: string | null;
+    patch_panel?: string | null;
+    junction_box?: string | null;
+    mounting_details?: string | null;
+    infrastructure_details?: Record<string, unknown> | null;
   } | null;
   specifications: AssetSpecificationValue[];
   power_sources: AssetRelationship[];

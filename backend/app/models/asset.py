@@ -132,6 +132,7 @@ class AssetSpecification(UUIDPrimaryKeyMixin, AuditMixin, Base):
 
     asset_id: Mapped[UUID] = mapped_column(ForeignKey("asset.assets.id", ondelete="CASCADE", onupdate="RESTRICT"), nullable=False)
     specification_definition_id: Mapped[int] = mapped_column(ForeignKey("master.specification_definitions.id", ondelete="RESTRICT", onupdate="RESTRICT"), nullable=False)
+
     value_text: Mapped[str | None] = mapped_column(String(500))
     value_number: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     value_boolean: Mapped[bool | None] = mapped_column(Boolean)
@@ -148,6 +149,10 @@ class AssetInstallation(UUIDPrimaryKeyMixin, AuditMixin, Base):
     installed_on: Mapped[date | None] = mapped_column(Date)
     removed_on: Mapped[date | None] = mapped_column(Date)
     current_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    installation_status: Mapped[str | None] = mapped_column(String(30), server_default=text("'INSTALLED'"))
+    installed_by: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
+    removed_by: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
+    remarks: Mapped[str | None] = mapped_column(Text)
 
 
 class AssetMovement(UUIDPrimaryKeyMixin, AuditMixin, Base):

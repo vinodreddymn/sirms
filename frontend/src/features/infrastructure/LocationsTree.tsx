@@ -30,6 +30,13 @@ interface LocationPosition {
   position_type_id: number;
   position_number: string;
   maximum_capacity: number;
+  power_source: string | null;
+  electrical_panel: string | null;
+  network_switch: string | null;
+  switch_port: string | null;
+  patch_panel: string | null;
+  junction_box: string | null;
+  mounting_details: string | null;
   remarks: string | null;
 }
 
@@ -77,7 +84,7 @@ const PositionPanel: React.FC<{
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({ position_type_id: 0, position_number: '', maximum_capacity: 1, remarks: '' });
+  const [formData, setFormData] = useState({ position_type_id: 0, position_number: '', maximum_capacity: 1, power_source: '', electrical_panel: '', network_switch: '', switch_port: '', patch_panel: '', junction_box: '', mounting_details: '', remarks: '' });
   const { addToast } = useToast();
 
   // Template apply state
@@ -103,13 +110,13 @@ const PositionPanel: React.FC<{
 
   const openAdd = () => {
     setEditingId(null);
-    setFormData({ position_type_id: positionTypes[0]?.id ?? 0, position_number: '', maximum_capacity: 1, remarks: '' });
+    setFormData({ position_type_id: positionTypes[0]?.id ?? 0, position_number: '', maximum_capacity: 1, power_source: '', electrical_panel: '', network_switch: '', switch_port: '', patch_panel: '', junction_box: '', mounting_details: '', remarks: '' });
     setIsModalOpen(true);
   };
 
   const openEdit = (pos: LocationPosition) => {
     setEditingId(pos.id);
-    setFormData({ position_type_id: pos.position_type_id, position_number: pos.position_number, maximum_capacity: pos.maximum_capacity, remarks: pos.remarks ?? '' });
+    setFormData({ position_type_id: pos.position_type_id, position_number: pos.position_number, maximum_capacity: pos.maximum_capacity, power_source: pos.power_source ?? '', electrical_panel: pos.electrical_panel ?? '', network_switch: pos.network_switch ?? '', switch_port: pos.switch_port ?? '', patch_panel: pos.patch_panel ?? '', junction_box: pos.junction_box ?? '', mounting_details: pos.mounting_details ?? '', remarks: pos.remarks ?? '' });
     setIsModalOpen(true);
   };
 
@@ -167,7 +174,20 @@ const PositionPanel: React.FC<{
     if (!formData.position_type_id) { addToast('error', 'Position type is required.'); return; }
     setSaving(true);
     try {
-      const payload = { ...formData, location_id: locationId, position_type_id: Number(formData.position_type_id), maximum_capacity: Number(formData.maximum_capacity) };
+      const payload = {
+        ...formData,
+        location_id: locationId,
+        position_type_id: Number(formData.position_type_id),
+        maximum_capacity: Number(formData.maximum_capacity),
+        power_source: formData.power_source || null,
+        electrical_panel: formData.electrical_panel || null,
+        network_switch: formData.network_switch || null,
+        switch_port: formData.switch_port || null,
+        patch_panel: formData.patch_panel || null,
+        junction_box: formData.junction_box || null,
+        mounting_details: formData.mounting_details || null,
+        remarks: formData.remarks || null,
+      };
       if (editingId) {
         await api.put(`/infrastructure/positions/${editingId}`, payload);
         addToast('success', 'Position updated.');
@@ -244,6 +264,16 @@ const PositionPanel: React.FC<{
         />
         <Input label="Position Number" value={formData.position_number} onChange={e => setFormData({ ...formData, position_number: e.target.value })} placeholder="e.g. CAM-01" />
         <Input label="Maximum Capacity" type="number" value={formData.maximum_capacity} onChange={e => setFormData({ ...formData, maximum_capacity: parseInt(e.target.value) || 1 })} />
+        <p style={{ margin: '0.5rem 0 0.25rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-secondary)', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>Fixed Infrastructure (permanent, belongs to this position)</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <Input label="Power Source / UPS" value={formData.power_source} onChange={e => setFormData({ ...formData, power_source: e.target.value })} placeholder="e.g. UPS-A2" />
+          <Input label="Electrical Panel / Circuit" value={formData.electrical_panel} onChange={e => setFormData({ ...formData, electrical_panel: e.target.value })} placeholder="e.g. Panel-B / C12" />
+          <Input label="Network Switch" value={formData.network_switch} onChange={e => setFormData({ ...formData, network_switch: e.target.value })} placeholder="e.g. SW-FLOOR2" />
+          <Input label="Switch Port" value={formData.switch_port} onChange={e => setFormData({ ...formData, switch_port: e.target.value })} placeholder="e.g. Gi1/0/24" />
+          <Input label="Patch Panel" value={formData.patch_panel} onChange={e => setFormData({ ...formData, patch_panel: e.target.value })} placeholder="e.g. PP-A / Port 12" />
+          <Input label="Junction Box" value={formData.junction_box} onChange={e => setFormData({ ...formData, junction_box: e.target.value })} placeholder="e.g. JB-Floor2-08" />
+        </div>
+        <Input label="Mounting Details" value={formData.mounting_details} onChange={e => setFormData({ ...formData, mounting_details: e.target.value })} placeholder="e.g. Ceiling mount, 3m AGL" />
         <Input label="Remarks" value={formData.remarks} onChange={e => setFormData({ ...formData, remarks: e.target.value })} placeholder="Optional notes..." />
       </Modal>
 

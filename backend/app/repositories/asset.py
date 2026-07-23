@@ -246,6 +246,8 @@ class AssetRepository:
                 AssetInstallation.installed_on.label("installed_on"),
                 AssetInstallation.removed_on.label("removed_on"),
                 AssetInstallation.current_flag.label("current_flag"),
+                AssetInstallation.installation_status.label("installation_status"),
+                AssetInstallation.remarks.label("installation_remarks"),
             )
             .where(AssetInstallation.asset_id == asset_id, AssetInstallation.current_flag.is_(True))
             .order_by(AssetInstallation.installed_on.desc(), AssetInstallation.created_at.desc())
@@ -295,7 +297,17 @@ class AssetRepository:
                 current_installation.c.installed_on.label("installation_date"),
                 current_installation.c.removed_on.label("installation_removed_on"),
                 current_installation.c.current_flag.label("installation_current_flag"),
+                current_installation.c.installation_status.label("installation_status"),
+                current_installation.c.installation_remarks.label("installation_remarks"),
                 LocationPosition.position_number.label("installation_position_name"),
+                LocationPosition.power_source.label("position_power_source"),
+                LocationPosition.electrical_panel.label("position_electrical_panel"),
+                LocationPosition.network_switch.label("position_network_switch"),
+                LocationPosition.switch_port.label("position_switch_port"),
+                LocationPosition.patch_panel.label("position_patch_panel"),
+                LocationPosition.junction_box.label("position_junction_box"),
+                LocationPosition.mounting_details.label("position_mounting_details"),
+                LocationPosition.infrastructure_details.label("position_infrastructure_details"),
             )
             .select_from(Asset)
             .join(Project, Project.id == Asset.project_id)

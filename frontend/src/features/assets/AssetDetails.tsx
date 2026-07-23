@@ -195,11 +195,32 @@ export const AssetDetailsPage: React.FC = () => {
               items={[
                 { label: "Current Location", value: basic.current_location || "-" },
                 { label: "Installation Position", value: asset.installation?.position_name ?? "-" },
+                { label: "Installation Status", value: asset.installation?.installation_status ?? "-" },
                 { label: "Installation Date", value: formatDate(asset.installation?.installed_on) },
                 { label: "Removed On", value: formatDate(asset.installation?.removed_on) },
+                { label: "Installation Remarks", value: asset.installation?.remarks ?? "-" },
               ]}
             />
+            {(asset.installation?.power_source || asset.installation?.electrical_panel || asset.installation?.network_switch || asset.installation?.switch_port || asset.installation?.patch_panel || asset.installation?.junction_box || asset.installation?.mounting_details) && (
+              <>
+                <p style={{ margin: "1rem 0 0.5rem", fontWeight: 600, fontSize: "0.875rem", color: "var(--text-secondary)", borderTop: "1px solid var(--border-color)", paddingTop: "0.75rem" }}>
+                  Fixed Infrastructure (Position)
+                </p>
+                <DetailGrid
+                  items={[
+                    { label: "Power Source / UPS", value: asset.installation?.power_source ?? "-" },
+                    { label: "Electrical Panel / Circuit", value: asset.installation?.electrical_panel ?? "-" },
+                    { label: "Network Switch", value: asset.installation?.network_switch ?? "-" },
+                    { label: "Switch Port", value: asset.installation?.switch_port ?? "-" },
+                    { label: "Patch Panel", value: asset.installation?.patch_panel ?? "-" },
+                    { label: "Junction Box", value: asset.installation?.junction_box ?? "-" },
+                    { label: "Mounting Details", value: asset.installation?.mounting_details ?? "-" },
+                  ].filter((item) => item.value !== "-")}
+                />
+              </>
+            )}
           </Section>
+
 
           <Section title="Operational Notes">
             <DetailGrid items={[{ label: "Remarks", value: basic.remarks || "-" }]} />

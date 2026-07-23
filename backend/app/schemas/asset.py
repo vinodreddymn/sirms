@@ -152,6 +152,10 @@ class AssetInstallationCreate(BaseModel):
     installed_on: date | None = None
     removed_on: date | None = None
     current_flag: bool = True
+    installation_status: str | None = None
+    installed_by: UUID | None = None
+    removed_by: UUID | None = None
+    remarks: str | None = None
 
 
 class AssetInstallationRead(AssetInstallationCreate):
@@ -169,6 +173,17 @@ class AssetInstallationInfoRead(BaseModel):
     installed_on: date | None = None
     removed_on: date | None = None
     current_flag: bool = True
+    installation_status: str | None = None
+    remarks: str | None = None
+    # Fixed infrastructure from the Position
+    power_source: str | None = None
+    electrical_panel: str | None = None
+    network_switch: str | None = None
+    switch_port: str | None = None
+    patch_panel: str | None = None
+    junction_box: str | None = None
+    mounting_details: str | None = None
+    infrastructure_details: dict[str, object] | None = None
 
 
 class AssetMovementCreate(BaseModel):

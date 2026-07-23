@@ -401,6 +401,16 @@ def _build_asset_details(details: dict[str, object]) -> AssetDetailsRead:
             installed_on=details.get("installation_date"),
             removed_on=details.get("installation_removed_on"),
             current_flag=bool(details.get("installation_current_flag", True)),
+            installation_status=details.get("installation_status"),
+            remarks=details.get("installation_remarks"),
+            power_source=details.get("position_power_source"),
+            electrical_panel=details.get("position_electrical_panel"),
+            network_switch=details.get("position_network_switch"),
+            switch_port=details.get("position_switch_port"),
+            patch_panel=details.get("position_patch_panel"),
+            junction_box=details.get("position_junction_box"),
+            mounting_details=details.get("position_mounting_details"),
+            infrastructure_details=details.get("position_infrastructure_details"),
         )
     return AssetDetailsRead(
         id=details["id"],
