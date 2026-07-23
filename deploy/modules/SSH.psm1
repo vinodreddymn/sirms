@@ -21,11 +21,11 @@ function Copy-FileToRemote{
 param([string]$LocalFile,[string]$RemotePath,[string]$Host,[string]$User,[string]$KeyFile,[int]$Port=22)
 if(!(Test-Path $LocalFile)){throw "Local file not found: $LocalFile"}
 Ensure-RemoteDirectory -Host $Host -User $User -KeyFile $KeyFile -Directory $RemotePath -Port $Port
-$args=@("-i",$KeyFile,"-P",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=/dev/null",$LocalFile,"$User@$Host`:$RemotePath/")
+$args=@("-i",$KeyFile,"-P",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=NUL","LogLevel=ERROR",$LocalFile,"$User@$Host`:$RemotePath/")
 Invoke-SSHProcess -Executable scp -Arguments $args|Out-Null}
 function Copy-FileFromRemote{
 param([string]$RemoteFile,[string]$LocalPath,[string]$Host,[string]$User,[string]$KeyFile,[int]$Port=22)
-$args=@("-i",$KeyFile,"-P",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=/dev/null","$User@$Host`:$RemoteFile",$LocalPath)
+$args=@("-i",$KeyFile,"-P",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=NUL","LogLevel=ERROR","$User@$Host`:$RemoteFile",$LocalPath)
 Invoke-SSHProcess -Executable scp -Arguments $args|Out-Null}
 function Test-SshConnection{
 param([string]$Host,[string]$User,[string]$KeyFile,[int]$Port=22)
