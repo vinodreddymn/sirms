@@ -11,13 +11,24 @@ if($c-eq 0){return $o}
 if($i-lt $Retries){Start-Sleep 2}}
 throw "$Executable failed (exit code $c)`n$($o-join [Environment]::NewLine)"}
 function Invoke-SshCommand{
-param([string]$Host,[string]$User,[string]$KeyFile,[string]$Command,[int]$Port=22,[int]$Retries=1)
-if([string]::IsNullOrWhiteSpace($KeyFile)){ throw "Invoke-SshCommand: KeyFile is empty" }
-if([string]::IsNullOrWhiteSpace($Host)){ throw "Invoke-SshCommand: Host is empty" }
-$b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Command))
-$remoteCmd = "echo $b64 | base64 -d | bash -l"
-$args=@("-i",$KeyFile,"-p",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=NUL","-o","LogLevel=ERROR","$User@$Host",$remoteCmd)
-Invoke-SSHProcess -Executable ssh -Arguments $args -Retries $Retries}
+    param([string]$Host,[string]$User,[string]$KeyFile,[string]$Command,[int]$Port=22,[int]$Retries=1)
+    
+    if([string]::IsNullOrWhiteSpace($KeyFile)){ throw "Invoke-SshCommand: KeyFile is empty" }
+    if([string]::IsNullOrWhiteSpace($Host)){ throw "Invoke-SshCommand: Host is empty" }
+    
+    # Option 1: Use single quotes to preserve the command
+    $args=@(
+        "-i",$KeyFile,
+        "-p",$Port,
+        "-o","StrictHostKeyChecking=no",
+        "-o","UserKnownHostsFile=NUL",
+        "-o","LogLevel=ERROR",
+        "$User@$Host",
+        $Command  # Pass command directly instead of base64 encoding
+    )
+    
+    Invoke-SSHProcess -Executable ssh -Arguments $args -Retries $Retries
+}
 function Ensure-RemoteDirectory{
 param([string]$Host,[string]$User,[string]$KeyFile,[string]$Directory,[int]$Port=22)
 Invoke-SshCommand -Host $Host -User $User -KeyFile $KeyFile -Port $Port -Command ("mkdir -p '{0}'"-f $Directory)|Out-Null}
