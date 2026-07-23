@@ -15,13 +15,44 @@ class AuthService:
         self.session = session
         self.user_repo = UserRepository(session)
         self.refresh_repo = RefreshTokenRepository(session)
+        from app.repositories.security import LoginHistoryRepository
+        self.login_history_repo = LoginHistoryRepository(session)
 
-    async def authenticate(self, username: str, password: str) -> User:
+    async def authenticate(self, username: str, password: str, request=None) -> User:
         user = await self.user_repo.get_by_username(username)
+        from app.models.security import LoginHistory
+        ip_address = request.client.host if request and request.client else None
+        device_info = request.headers.get("user-agent") if request else None
+
         if not user or not verify_password(password, user.password_hash):
+            if user:
+                history = LoginHistory(
+                    user_id=user.id,
+                    login_status="FAILED",
+                    ip_address=ip_address,
+                    device_info=device_info,
+                    remarks="Invalid password"
+                )
+                await self.login_history_repo.create(history)
             raise UnauthorizedException("Invalid username or password")
         if user.is_locked:
+            history = LoginHistory(
+                user_id=user.id,
+                login_status="FAILED",
+                ip_address=ip_address,
+                device_info=device_info,
+                remarks="Account is locked"
+            )
+            await self.login_history_repo.create(history)
             raise UnauthorizedException("Account is locked")
+        history = LoginHistory(
+            user_id=user.id,
+            login_status="SUCCESS",
+            ip_address=ip_address,
+            device_info=device_info,
+            remarks="Login successful"
+        )
+        await self.login_history_repo.create(history)
         await self.user_repo.update_last_login(user)
         return user
 

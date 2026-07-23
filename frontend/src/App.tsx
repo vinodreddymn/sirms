@@ -16,6 +16,9 @@ import { LocationsTree } from './features/infrastructure/LocationsTree';
 import { MaintenanceStub } from './features/maintenance/MaintenanceStub';
 import { DailyWorkLog } from './features/dailywork/DailyWorkLog';
 import { Reports } from './features/reports/Reports';
+import { UserList } from './features/security/users/UserList';
+import { RoleList } from './features/security/roles/RoleList';
+import { AuditList } from './features/security/audit/AuditList';
 import { ToastProvider } from './contexts/ToastContext';
 
 // Basic Auth Guard
@@ -46,6 +49,9 @@ function App() {
             <Route path="reports" element={<Reports />} />
             <Route path="stock" element={<StockTransactions />} />
             <Route path="infrastructure" element={<LocationsTree />} />
+            <Route path="security/users" element={<UserList />} />
+            <Route path="security/roles" element={<RoleList />} />
+            <Route path="security/audit" element={<AuditList />} />
           </Route>
         </Routes>
       </BrowserRouter>

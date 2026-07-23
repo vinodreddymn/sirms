@@ -5,6 +5,7 @@ import { Input, Select } from "../../components/FormControls";
 import { useToast } from "../../contexts/ToastContext";
 import { api } from "../../services/api";
 import { LocationSearchSelect } from "./LocationSearchSelect";
+import { AssetSearchMultiSelect } from "./AssetSearchMultiSelect";
 import type {
   AssetDetails,
   AssetFormPayload,
@@ -606,22 +607,34 @@ export const AssetForm: React.FC<AssetFormProps> = ({ isOpen, onClose, onSuccess
 
         <section>
           <h3 style={{ marginTop: 0 }}>Asset Relationships</h3>
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Enter related asset IDs separated by commas. These relationships are saved during enrollment.</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
-            {([
-              ["POWERED_BY", "Power Sources"],
-              ["CONNECTED_TO", "Network Connections"],
-              ["PARENT_OF", "Parent Assets"],
-              ["CHILD_OF", "Child Assets"],
-            ] as const).map(([code, label]) => (
-              <Input
-                key={code}
-                label={label}
-                value={formData.relationship_ids[code].join(", ")}
-                onChange={(event) => setFormData((current) => ({ ...current, relationship_ids: { ...current.relationship_ids, [code]: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) } }))}
-                placeholder="Asset UUIDs, comma separated"
-              />
-            ))}
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Search and select related assets. These relationships are saved during enrollment.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1rem" }}>
+            <AssetSearchMultiSelect
+              label="Power Sources"
+              value={formData.relationship_ids.POWERED_BY}
+              onChange={(val) => setFormData((current) => ({ ...current, relationship_ids: { ...current.relationship_ids, POWERED_BY: val } }))}
+              categoryId={3}
+              placeholder="Search Power assets..."
+            />
+            <AssetSearchMultiSelect
+              label="Network Connections"
+              value={formData.relationship_ids.CONNECTED_TO}
+              onChange={(val) => setFormData((current) => ({ ...current, relationship_ids: { ...current.relationship_ids, CONNECTED_TO: val } }))}
+              categoryId={2}
+              placeholder="Search Network assets..."
+            />
+            <AssetSearchMultiSelect
+              label="Parent Assets"
+              value={formData.relationship_ids.PARENT_OF}
+              onChange={(val) => setFormData((current) => ({ ...current, relationship_ids: { ...current.relationship_ids, PARENT_OF: val } }))}
+              placeholder="Search parent assets..."
+            />
+            <AssetSearchMultiSelect
+              label="Child Assets"
+              value={formData.relationship_ids.CHILD_OF}
+              onChange={(val) => setFormData((current) => ({ ...current, relationship_ids: { ...current.relationship_ids, CHILD_OF: val } }))}
+              placeholder="Search child assets..."
+            />
           </div>
         </section>
 

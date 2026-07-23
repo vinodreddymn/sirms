@@ -15,6 +15,9 @@ from app.api.v1.search.router import router as search_router
 from app.api.v1.stock.router import router as stock_router
 from app.api.v1.uploads.router import router as uploads_router
 from app.api.v1.users.router import router as users_router
+from app.api.v1.roles.router import router as roles_router
+from app.api.v1.permissions.router import router as permissions_router
+from app.api.v1.audit.router import router as audit_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -32,3 +35,6 @@ api_router.include_router(search_router)
 api_router.include_router(uploads_router)
 api_router.include_router(notifications_router)
 api_router.include_router(users_router)
+api_router.include_router(roles_router)
+api_router.include_router(permissions_router)
+api_router.include_router(audit_router)

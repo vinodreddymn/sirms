@@ -109,3 +109,60 @@ class RefreshTokenRepository:
         for token in result.scalars().all():
             token.revoked_at = datetime.utcnow()
         await self.session.flush()
+
+class RoleRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get_by_id(self, role_id: UUID) -> Role | None:
+        result = await self.session.execute(select(Role).where(Role.id == role_id))
+        return result.scalars().first()
+
+    async def get_by_code(self, role_code: str) -> Role | None:
+        result = await self.session.execute(select(Role).where(Role.role_code == role_code))
+        return result.scalars().first()
+
+    async def list(self, offset: int = 0, limit: int = 100) -> list[Role]:
+        result = await self.session.execute(select(Role).order_by(Role.role_name).offset(offset).limit(limit))
+        return result.scalars().all()
+        
+    async def count(self) -> int:
+        result = await self.session.execute(select(func.count()).select_from(Role))
+        return result.scalar_one()
+
+    async def create(self, role: Role) -> Role:
+        self.session.add(role)
+        await self.session.flush()
+        return role
+
+class PermissionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        
+    async def list(self) -> list[Permission]:
+        result = await self.session.execute(select(Permission).order_by(Permission.module_name, Permission.permission_name))
+        return result.scalars().all()
+
+class LoginHistoryRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(self, history) -> None:
+        self.session.add(history)
+        await self.session.flush()
+    async def list_with_users(self, offset: int = 0, limit: int = 100):
+        from app.models.security import LoginHistory, User
+        stmt = (
+            select(LoginHistory, User.username)
+            .outerjoin(User, User.id == LoginHistory.user_id)
+            .order_by(LoginHistory.login_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return result.all()
+
+    async def count(self) -> int:
+        from app.models.security import LoginHistory
+        result = await self.session.execute(select(func.count()).select_from(LoginHistory))
+        return result.scalar_one()
