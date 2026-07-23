@@ -3,88 +3,86 @@
 SIRMS Deployment Toolkit
 File    : deploy.ps1
 Purpose : Main Deployment Orchestrator
-Version : 1.0
+Version : 2.0
 ===============================================================================
 #>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptRoot = Split-Path -Parent $PSCommandPath
 
-Import-Module "$ScriptRoot\modules\Logger.psm1" -Force
-Import-Module "$ScriptRoot\modules\Utils.psm1" -Force
-Import-Module "$ScriptRoot\modules\Validation.psm1" -Force
-Import-Module "$ScriptRoot\modules\Git.psm1" -Force
-Import-Module "$ScriptRoot\modules\Database.psm1" -Force
-Import-Module "$ScriptRoot\modules\SSH.psm1" -Force
-Import-Module "$ScriptRoot\modules\Health.psm1" -Force
-Import-Module "$ScriptRoot\modules\Report.psm1" -Force
+foreach($m in "Logger","Utils","Validation","Git","Database","SSH","Health","Report"){
+    Import-Module (Join-Path $ScriptRoot "modules\$m.psm1") -Force
+}
 
 function Import-EnvFile {
     param([Parameter(Mandatory)][string]$Path)
-
-    $cfg = @{}
-
-    Get-Content $Path | ForEach-Object {
-
-        if($_.Trim().StartsWith("#") -or [string]::IsNullOrWhiteSpace($_)){
-            return
-        }
-
-        $parts = $_ -split "=",2
-        if($parts.Count -eq 2){
-            $cfg[$parts[0].Trim()] = $parts[1].Trim()
+    if(!(Test-Path $Path)){ throw ".env not found: $Path" }
+    $cfg=@{}
+    foreach($line in Get-Content $Path){
+        $line=$line.Trim()
+        if(!$line -or $line.StartsWith("#")){ continue }
+        $k,$v=$line -split "=",2
+        if($null -ne $v){
+            $cfg[$k.Trim()]=$v.Trim().Trim("'`"")
         }
     }
-
-    return $cfg
+    $cfg
 }
 
-$config = Import-EnvFile -Path (Join-Path $ScriptRoot ".env")
+$config = Import-EnvFile (Join-Path $ScriptRoot ".env")
 
 Initialize-Logger -LogDirectory (Join-Path $ScriptRoot "logs")
 Show-Banner
 
-$start = Get-Date
-
-$context = @{
-    Status = "FAILED"
-    StartTime = $start
-    Commit = ""
-    Backup = ""
+$start=Get-Date
+$ctx=@{
+    Status="FAILED"
+    StartTime=$start
+    Commit=""
+    Backup=""
+    Health=$null
 }
 
-try {
-
+try{
     Write-Section "Validation"
-    Invoke-Validation -Config $config
+    Invoke-Validation -Config $config | Out-Null
 
     Write-Section "Git"
-    $git = Invoke-GitWorkflow `
+    $git=Invoke-GitWorkflow `
         -Repository $config.PROJECT_ROOT `
         -CommitMessage ("Deployment {0}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss")) `
         -Push:($config.AUTO_PUSH -eq "true")
-
-    $context.Commit = $git.Commit
+    $ctx.Commit=$git.Commit
 
     Write-Section "Database Backup"
+    $backupDir=Join-Path $ScriptRoot "backups"
+    New-DirectoryIfMissing $backupDir | Out-Null
+    $backupName="backup_{0}.backup" -f (Get-Timestamp)
+    $backupFile=Join-Path $backupDir $backupName
+    New-DatabaseBackup -Config $config -OutputFile $backupFile
+    $ctx.Backup=$backupFile
 
-    $backupName = "backup_{0}.backup" -f (Get-Timestamp)
+    Write-Section "Prepare Remote"
+    Ensure-RemoteDirectory `
+        -Host $config.EC2_HOST `
+        -User $config.EC2_USER `
+        -KeyFile $config.SSH_PRIVATE_KEY `
+        -Port ([int]$config.EC2_PORT) `
+        -Directory $config.REMOTE_DEPLOY_DIRECTORY
 
-    $backupFile = Join-Path `
-        (Join-Path $ScriptRoot "backups") `
-        $backupName
+    Write-Section "Upload Files"
+    $remoteScript=Join-Path $ScriptRoot "remote\deploy_remote.sh"
+    if(!(Test-Path $remoteScript)){ throw "Missing $remoteScript" }
 
-    New-DirectoryIfMissing (Join-Path $ScriptRoot "backups") | Out-Null
-
-    New-DatabaseBackup `
-        -Config $config `
-        -OutputFile $backupFile
-
-    $context.Backup = $backupFile
-
-    Write-Section "Upload Backup"
+    Copy-FileToRemote `
+        -LocalFile $remoteScript `
+        -RemotePath $config.REMOTE_DEPLOY_DIRECTORY `
+        -Host $config.EC2_HOST `
+        -User $config.EC2_USER `
+        -KeyFile $config.SSH_PRIVATE_KEY `
+        -Port ([int]$config.EC2_PORT)
 
     Copy-FileToRemote `
         -LocalFile $backupFile `
@@ -97,13 +95,16 @@ try {
     Write-Section "Remote Deployment"
 
     $remote = @"
-export PROJECT_PATH='$($config.REMOTE_PROJECT_PATH)'
-export BACKUP_FILE='$($config.REMOTE_DEPLOY_DIRECTORY)/$backupName'
-export DB_NAME='$($config.REMOTE_DB_NAME)'
-export DB_USER='$($config.REMOTE_DB_USER)'
-export BACKEND_SERVICE='$($config.BACKEND_SERVICE)'
-export NGINX_SERVICE='$($config.NGINX_SERVICE)'
-bash $($config.REMOTE_DEPLOY_DIRECTORY)/deploy_remote.sh
+chmod +x "$($config.REMOTE_DEPLOY_DIRECTORY)/deploy_remote.sh"
+
+export PROJECT_PATH="$($config.REMOTE_PROJECT_PATH)"
+export BACKUP_FILE="$($config.REMOTE_DEPLOY_DIRECTORY)/$backupName"
+export DB_NAME="$($config.REMOTE_DB_NAME)"
+export DB_USER="$($config.REMOTE_DB_USER)"
+export BACKEND_SERVICE="$($config.BACKEND_SERVICE)"
+export NGINX_SERVICE="$($config.NGINX_SERVICE)"
+
+bash "$($config.REMOTE_DEPLOY_DIRECTORY)/deploy_remote.sh"
 "@
 
     Invoke-SshCommand `
@@ -113,41 +114,31 @@ bash $($config.REMOTE_DEPLOY_DIRECTORY)/deploy_remote.sh
         -Port ([int]$config.EC2_PORT) `
         -Command $remote
 
-    Write-Section "Health Checks"
-
-    $health = Invoke-HealthChecks -Config $config
-    $context.Health = $health
-
-    $context.Status = "SUCCESS"
-
-}
-catch {
-
-    Write-ErrorLog $_.Exception.Message
-
-}
-finally {
-
-    $end = Get-Date
-
-    $context.EndTime = $end
-    $context.Duration = Get-ElapsedTime -Start $start -End $end
-
-    $report = New-DeploymentReport `
-        -Context $context `
-        -ReportDirectory (Join-Path $ScriptRoot "reports")
-
-    Show-DeploymentReport -Context $context
-
-    Show-Summary `
-        -Status $context.Status `
-        -Duration $context.Duration `
-        -Commit $context.Commit `
-        -Backup $context.Backup
-
-    if($context.Status -ne "SUCCESS"){
-        exit 1
+    if($config.ENABLE_HEALTH_CHECK -eq "true"){
+        Write-Section "Health Checks"
+        $ctx.Health=Invoke-HealthChecks -Config $config
     }
 
-    exit 0
+    $ctx.Status="SUCCESS"
+}
+catch{
+    Write-ErrorLog $_.Exception.ToString()
+}
+finally{
+    $end=Get-Date
+    $ctx.EndTime=$end
+    $ctx.Duration=Get-ElapsedTime -Start $start -End $end
+
+    $reportDir=Join-Path $ScriptRoot "reports"
+    New-DirectoryIfMissing $reportDir | Out-Null
+
+    $null=New-DeploymentReport -Context $ctx -ReportDirectory $reportDir
+    Show-DeploymentReport -Context $ctx
+    Show-Summary `
+        -Status $ctx.Status `
+        -Duration $ctx.Duration `
+        -Commit $ctx.Commit `
+        -Backup $ctx.Backup
+
+    if($ctx.Status -eq "SUCCESS"){ exit 0 } else { exit 1 }
 }
