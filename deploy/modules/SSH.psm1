@@ -12,7 +12,7 @@ if($i-lt $Retries){Start-Sleep 2}}
 throw "$Executable failed (exit code $c)`n$($o-join [Environment]::NewLine)"}
 function Invoke-SshCommand{
 param([string]$Host,[string]$User,[string]$KeyFile,[string]$Command,[int]$Port=22,[int]$Retries=1)
-$args=@("-i",$KeyFile,"-p",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=/dev/null","$User@$Host","bash","-lc",$Command)
+$args=@("-i",$KeyFile,"-p",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=NUL","-o","LogLevel=ERROR","$User@$Host","bash","-lc",$Command)
 Invoke-SSHProcess -Executable ssh -Arguments $args -Retries $Retries}
 function Ensure-RemoteDirectory{
 param([string]$Host,[string]$User,[string]$KeyFile,[string]$Directory,[int]$Port=22)
