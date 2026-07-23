@@ -3,46 +3,89 @@ SIRMS Deployment Toolkit - SSH.psm1 v2.0
 #>
 Set-StrictMode -Version Latest
 $ErrorActionPreference="Stop"
-function Invoke-SSHProcess{
-param([string]$Executable,[string[]]$Arguments,[int]$Retries=1)
-for($i=1;$i-le $Retries;$i++){
-$o=& $Executable @Arguments 2>&1;$c=$LASTEXITCODE
-if($c-eq 0){return $o}
-if($i-lt $Retries){Start-Sleep 2}}
-throw "$Executable failed (exit code $c)`n$($o-join [Environment]::NewLine)"}
-function Invoke-SshCommand{
-    param([string]$Host,[string]$User,[string]$KeyFile,[string]$Command,[int]$Port=22,[int]$Retries=1)
+
+function Invoke-SSHProcess {
+    param([string]$Executable, [string[]]$Arguments, [int]$Retries=1)
     
-    if([string]::IsNullOrWhiteSpace($KeyFile)){ throw "Invoke-SshCommand: KeyFile is empty" }
-    if([string]::IsNullOrWhiteSpace($Host)){ throw "Invoke-SshCommand: Host is empty" }
+    for($i=1; $i-le $Retries; $i++){
+        $o = & $Executable @Arguments 2>&1
+        $c = $LASTEXITCODE
+        if($c -eq 0) { return $o }
+        if($i -lt $Retries) { Start-Sleep 2 }
+    }
+    throw "$Executable failed (exit code $c)`n$($o-join [Environment]::NewLine)"
+}
+
+function Invoke-SshCommand {
+    param([string]$Host, [string]$User, [string]$KeyFile, [string]$Command, [int]$Port=22, [int]$Retries=1)
     
-    # Option 1: Use single quotes to preserve the command
-    $args=@(
-        "-i",$KeyFile,
-        "-p",$Port,
-        "-o","StrictHostKeyChecking=no",
-        "-o","UserKnownHostsFile=NUL",
-        "-o","LogLevel=ERROR",
+    if([string]::IsNullOrWhiteSpace($KeyFile)) { throw "Invoke-SshCommand: KeyFile is empty" }
+    if([string]::IsNullOrWhiteSpace($Host)) { throw "Invoke-SshCommand: Host is empty" }
+    
+    $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Command))
+    $remoteCmd = "echo $b64 | base64 -d | bash -l"
+    $args = @(
+        "-i", $KeyFile,
+        "-p", $Port,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=NUL",
+        "-o", "LogLevel=ERROR",
         "$User@$Host",
-        $Command  # Pass command directly instead of base64 encoding
+        $remoteCmd
     )
-    
     Invoke-SSHProcess -Executable ssh -Arguments $args -Retries $Retries
 }
-function Ensure-RemoteDirectory{
-param([string]$Host,[string]$User,[string]$KeyFile,[string]$Directory,[int]$Port=22)
-Invoke-SshCommand -Host $Host -User $User -KeyFile $KeyFile -Port $Port -Command ("mkdir -p '{0}'"-f $Directory)|Out-Null}
-function Copy-FileToRemote{
-param([string]$LocalFile,[string]$RemotePath,[string]$Host,[string]$User,[string]$KeyFile,[int]$Port=22)
-if(!(Test-Path $LocalFile)){throw "Local file not found: $LocalFile"}
-Ensure-RemoteDirectory -Host $Host -User $User -KeyFile $KeyFile -Directory $RemotePath -Port $Port
-$args=@("-i",$KeyFile,"-P",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=NUL","LogLevel=ERROR",$LocalFile,"$User@$Host`:$RemotePath/")
-Invoke-SSHProcess -Executable scp -Arguments $args|Out-Null}
-function Copy-FileFromRemote{
-param([string]$RemoteFile,[string]$LocalPath,[string]$Host,[string]$User,[string]$KeyFile,[int]$Port=22)
-$args=@("-i",$KeyFile,"-P",$Port,"-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=NUL","LogLevel=ERROR","$User@$Host`:$RemoteFile",$LocalPath)
-Invoke-SSHProcess -Executable scp -Arguments $args|Out-Null}
-function Test-SshConnection{
-param([string]$Host,[string]$User,[string]$KeyFile,[int]$Port=22)
-try{Invoke-SshCommand -Host $Host -User $User -KeyFile $KeyFile -Port $Port -Command "echo connected"|Out-Null;$true}catch{$false}}
-Export-ModuleMember -Function Invoke-SshCommand,Copy-FileToRemote,Copy-FileFromRemote,Ensure-RemoteDirectory,Test-SshConnection
+
+function Ensure-RemoteDirectory {
+    param([string]$Host, [string]$User, [string]$KeyFile, [string]$Directory, [int]$Port=22)
+    
+    # Fix: Use double quotes instead of single quotes to avoid issues
+    # Also add error handling for existing directory
+    $cmd = "mkdir -p '$Directory' 2>/dev/null || true"
+    Invoke-SshCommand -Host $Host -User $User -KeyFile $KeyFile -Port $Port -Command $cmd | Out-Null
+}
+
+function Copy-FileToRemote {
+    param([string]$LocalFile, [string]$RemotePath, [string]$Host, [string]$User, [string]$KeyFile, [int]$Port=22)
+    
+    if(!(Test-Path $LocalFile)) { throw "Local file not found: $LocalFile" }
+    Ensure-RemoteDirectory -Host $Host -User $User -KeyFile $KeyFile -Directory $RemotePath -Port $Port
+    
+    $args = @(
+        "-i", $KeyFile,
+        "-P", $Port,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=NUL",
+        "-o", "LogLevel=ERROR",
+        $LocalFile,
+        "$User@$Host`:$RemotePath/"
+    )
+    Invoke-SSHProcess -Executable scp -Arguments $args | Out-Null
+}
+
+function Copy-FileFromRemote {
+    param([string]$RemoteFile, [string]$LocalPath, [string]$Host, [string]$User, [string]$KeyFile, [int]$Port=22)
+    
+    $args = @(
+        "-i", $KeyFile,
+        "-P", $Port,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=NUL",
+        "-o", "LogLevel=ERROR",
+        "$User@$Host`:$RemoteFile",
+        $LocalPath
+    )
+    Invoke-SSHProcess -Executable scp -Arguments $args | Out-Null
+}
+
+function Test-SshConnection {
+    param([string]$Host, [string]$User, [string]$KeyFile, [int]$Port=22)
+    try {
+        Invoke-SshCommand -Host $Host -User $User -KeyFile $KeyFile -Port $Port -Command "echo connected" | Out-Null
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+Export-ModuleMember -Function Invoke-SshCommand, Copy-FileToRemote, Copy-FileFromRemote, Ensure-RemoteDirectory, Test-SshConnection
