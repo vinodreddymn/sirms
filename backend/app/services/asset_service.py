@@ -357,10 +357,59 @@ class AssetService:
         return items, await repo.count_by_asset(asset_id)
 
     async def create_asset_installation(self, asset_id: UUID, values: dict[str, Any]) -> AssetInstallation:
+        pos_id = values["location_position_id"]
+        await self._validate_position_capacity(pos_id, asset_id=asset_id)
+        current_query = select(AssetInstallation).where(
+            AssetInstallation.asset_id == asset_id,
+            AssetInstallation.current_flag.is_(True)
+        )
+        current = (await self.session.execute(current_query)).scalars().first()
+        if current:
+            current.current_flag = False
+            current.removed_on = values.get("installed_on") or date.today()
+        pos = await self.session.get(LocationPosition, pos_id)
+        if not pos:
+            raise ValueError("Position not found")
+        asset = await self.session.get(Asset, asset_id)
+        if not asset:
+            raise ValueError("Asset not found")
+        asset.current_location_id = pos.location_id
         values["asset_id"] = asset_id
+        values["current_flag"] = True
         entity = AssetInstallation(**values)
         repo = AssetInstallationRepository(self.session)
-        return await repo.create(entity)
+        result = await repo.create(entity)
+        self.session.add(AssetTimelineEvent(
+            asset_id=asset_id,
+            event_type="ASSET_INSTALLED",
+            description=f"Installed to position {pos.position_number}",
+            metadata_json={"location_position_id": str(pos_id), "location_id": str(pos.location_id)}
+        ))
+        await self.session.flush()
+        return result
+
+    async def uninstall_asset(self, asset_id: UUID, values: dict[str, Any] | None = None) -> AssetInstallation | None:
+        current_query = select(AssetInstallation).where(
+            AssetInstallation.asset_id == asset_id,
+            AssetInstallation.current_flag.is_(True)
+        )
+        current = (await self.session.execute(current_query)).scalars().first()
+        if not current:
+            raise ValueError("Asset has no active installation")
+        current.current_flag = False
+        current.removed_on = (values or {}).get("removed_on") or date.today()
+        current.remarks = (values or {}).get("remarks") or "Uninstalled"
+        asset = await self.session.get(Asset, asset_id)
+        if asset:
+            asset.current_location_id = None
+        self.session.add(AssetTimelineEvent(
+            asset_id=asset_id,
+            event_type="ASSET_UNINSTALLED",
+            description="Uninstalled from position",
+            metadata_json={"location_position_id": str(current.location_position_id)}
+        ))
+        await self.session.flush()
+        return current
 
     async def list_asset_movements(self, asset_id: UUID, offset: int = 0, limit: int = 100) -> tuple[list[AssetMovement], int]:
         repo = AssetMovementRepository(self.session)
@@ -368,7 +417,129 @@ class AssetService:
         return items, await repo.count_by_asset(asset_id)
 
     async def create_asset_movement(self, asset_id: UUID, values: dict[str, Any]) -> AssetMovement:
+        asset = await self.session.get(Asset, asset_id)
+        if not asset:
+            raise ValueError("Asset not found")
+        old_location_id = asset.current_location_id
+        to_location_id = values.get("to_location_id")
+        asset.current_location_id = to_location_id
+        if old_location_id != to_location_id:
+            current_installation = await self.session.scalar(
+                select(AssetInstallation).where(
+                    AssetInstallation.asset_id == asset_id,
+                    AssetInstallation.current_flag.is_(True)
+                )
+            )
+            if current_installation:
+                current_installation.current_flag = False
+                current_installation.removed_on = date.today()
         values["asset_id"] = asset_id
+        values["from_location_id"] = old_location_id
         entity = AssetMovement(**values)
         repo = AssetMovementRepository(self.session)
-        return await repo.create(entity)
+        result = await repo.create(entity)
+        self.session.add(AssetTimelineEvent(
+            asset_id=asset_id,
+            event_type="ASSET_MOVED",
+            description=values.get("remarks") or f"Moved from location {old_location_id} to {to_location_id}",
+            metadata_json={
+                "from_location_id": str(old_location_id) if old_location_id else None,
+                "to_location_id": str(to_location_id) if to_location_id else None,
+                "movement_type_id": values.get("movement_type_id")
+            }
+        ))
+        await self.session.flush()
+        return result
+
+    async def transfer_asset(self, asset_id: UUID, values: dict[str, Any], user_id: UUID | None = None) -> Asset:
+        from app.models.common import Project
+        asset = await self.session.get(Asset, asset_id)
+        if not asset:
+            raise ValueError("Asset not found")
+        old_project_id = asset.project_id
+        new_project_id = values.get("project_id")
+        if new_project_id:
+            project = await self.session.get(Project, new_project_id)
+            if not project:
+                raise ValueError("Project not found")
+            asset.project_id = new_project_id
+        transfer_type = await self.session.scalar(select(MovementType).where(MovementType.code == "TRANSFER"))
+        transfer_type_id = transfer_type.id if transfer_type else None
+        self.session.add(AssetMovement(
+            asset_id=asset_id,
+            movement_type_id=transfer_type_id,
+            from_location_id=asset.current_location_id,
+            to_location_id=asset.current_location_id,
+            remarks=values.get("remarks") or f"Transferred project from {old_project_id} to {new_project_id}",
+            created_by=user_id
+        ))
+        self.session.add(AssetTimelineEvent(
+            asset_id=asset_id,
+            event_type="ASSET_TRANSFERRED",
+            description=values.get("remarks") or f"Transferred project from {old_project_id} to {new_project_id}",
+            metadata_json={
+                "old_project_id": str(old_project_id),
+                "new_project_id": str(new_project_id) if new_project_id else None
+            },
+            created_by=user_id
+        ))
+        await self.session.flush()
+        return asset
+
+    async def dispatch_asset_for_repair(self, asset_id: UUID, values: dict[str, Any], user_id: UUID) -> RepairHistory:
+        asset = await self.session.get(Asset, asset_id)
+        if not asset:
+            raise ValueError("Asset not found")
+        repair_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "UNDER_REPAIR"))
+        if not repair_status:
+            raise ValueError("UNDER_REPAIR status is not configured")
+        asset.asset_status_id = repair_status.id
+        repair = RepairHistory(
+            asset_id=asset_id,
+            fault_date=values.get("fault_date") or date.today(),
+            fault_description=values.get("fault_description") or "Sent for repair",
+            removed_from_location_id=asset.current_location_id,
+            removal_date=values.get("removal_date") or date.today(),
+            dispatch_date=values.get("dispatch_date") or date.today(),
+            courier_number=values.get("courier_number"),
+            vendor_id=values.get("vendor_id"),
+            rma_number=values.get("rma_number"),
+            created_by=user_id
+        )
+        self.session.add(repair)
+        self.session.add(AssetTimelineEvent(
+            asset_id=asset_id,
+            event_type="REPAIR_DISPATCHED",
+            description=f"Dispatched for repair to vendor. Courier: {values.get('courier_number') or 'N/A'}",
+            created_by=user_id
+        ))
+        await self.session.flush()
+        return repair
+
+    async def receive_asset_from_repair(self, asset_id: UUID, values: dict[str, Any], user_id: UUID) -> RepairHistory:
+        repair_query = select(RepairHistory).where(
+            RepairHistory.asset_id == asset_id,
+            RepairHistory.return_date.is_(None)
+        ).order_by(RepairHistory.created_at.desc())
+        repair = (await self.session.execute(repair_query)).scalars().first()
+        if not repair:
+            raise ValueError("No active repair record found to return this asset from")
+        repair.return_date = values.get("return_date") or date.today()
+        repair.repair_cost = values.get("repair_cost")
+        repair.repair_remarks = values.get("repair_remarks")
+        repair.repair_warranty_expiry = values.get("repair_warranty_expiry")
+        status_code = values.get("status_code") or "ACTIVE"
+        target_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == status_code))
+        if not target_status:
+            target_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "SPARE"))
+        asset = await self.session.get(Asset, asset_id)
+        if asset and target_status:
+            asset.asset_status_id = target_status.id
+        self.session.add(AssetTimelineEvent(
+            asset_id=asset_id,
+            event_type="REPAIR_RETURNED",
+            description=f"Returned from repair. Cost: {values.get('repair_cost') or 0.00}",
+            created_by=user_id
+        ))
+        await self.session.flush()
+        return repair

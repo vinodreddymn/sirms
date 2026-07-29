@@ -6,7 +6,8 @@ import { useToast } from "../../contexts/ToastContext";
 import { api } from "../../services/api";
 import { AssetForm } from "./AssetForm";
 import { Modal } from "../../components/Modal";
-import { Input } from "../../components/FormControls";
+import { Input, Select } from "../../components/FormControls";
+import { LocationSearchSelect } from "./LocationSearchSelect";
 import { Tabs } from "../../components/Tabs";
 import type { AssetDetails } from "./types";
 import { AssetMovementHistory } from "./AssetMovementHistory";
@@ -80,6 +81,42 @@ export const AssetDetailsPage: React.FC = () => {
   const [replacing, setReplacing] = useState(false);
   const [timeline, setTimeline] = useState<Array<{ id: string; event_type: string; event_at: string; description: string }>>([]);
 
+  const [installOpen, setInstallOpen] = useState(false);
+  const [installLocationId, setInstallLocationId] = useState<string | null>(null);
+  const [installPositionId, setInstallPositionId] = useState("");
+  const [installPositions, setInstallPositions] = useState<Array<{ id: string; position_number: string }>>([]);
+  const [installDate, setInstallDate] = useState(new Date().toISOString().split("T")[0]);
+  const [installing, setInstalling] = useState(false);
+
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveLocationId, setMoveLocationId] = useState<string | null>(null);
+  const [movementTypes, setMovementTypes] = useState<Array<{ id: number; name: string }>>([]);
+  const [movementTypeId, setMovementTypeId] = useState("");
+  const [moveRemarks, setMoveRemarks] = useState("");
+  const [moving, setMoving] = useState(false);
+
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [transferProjectId, setTransferProjectId] = useState("");
+  const [transferRemarks, setTransferRemarks] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
+  const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().split("T")[0]);
+  const [faultDesc, setFaultDesc] = useState("OEM Repair");
+  const [courierNum, setCourierNum] = useState("");
+  const [vendors, setVendors] = useState<Array<{ id: string; vendor_name: string }>>([]);
+  const [dispatchVendorId, setDispatchVendorId] = useState("");
+  const [rmaNum, setRmaNum] = useState("");
+  const [dispatching, setDispatching] = useState(false);
+
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [returnDate, setReturnDate] = useState(new Date().toISOString().split("T")[0]);
+  const [repairCost, setRepairCost] = useState("0");
+  const [repairRemarks, setRepairRemarks] = useState("");
+  const [warrantyExpiry, setWarrantyExpiry] = useState("");
+  const [receiving, setReceiving] = useState(false);
+
   const loadAsset = async () => {
     if (!id) return;
     setLoading(true);
@@ -99,6 +136,143 @@ export const AssetDetailsPage: React.FC = () => {
   useEffect(() => {
     void loadAsset();
   }, [id]);
+
+  useEffect(() => {
+    if (!installLocationId) {
+      setInstallPositions([]);
+      return;
+    }
+    api.get(`/infrastructure/locations/${installLocationId}/positions`)
+      .then((res) => setInstallPositions(res.data.items || []))
+      .catch(() => setInstallPositions([]));
+  }, [installLocationId]);
+
+  useEffect(() => {
+    if (isOpenLookups) return;
+    api.get("/common/projects").then(res => setProjects(res.data.items || [])).catch(() => {});
+    api.get("/common/vendors").then(res => setVendors(res.data.items || [])).catch(() => {});
+    api.get("/master/movement-types").then(res => setMovementTypes(res.data.items || [])).catch(() => {});
+  }, [installOpen, moveOpen, transferOpen, dispatchOpen]);
+
+  const isOpenLookups = !installOpen && !moveOpen && !transferOpen && !dispatchOpen;
+
+  const handleUninstall = async () => {
+    if (!window.confirm("Are you sure you want to uninstall this asset?")) return;
+    try {
+      await api.post(`/assets/${id}/uninstall`, {});
+      addToast("success", "Asset uninstalled successfully.");
+      await loadAsset();
+    } catch (err: any) {
+      addToast("error", err.response?.data?.detail || "Uninstall failed.");
+    }
+  };
+
+  const handleInstall = async () => {
+    if (!installPositionId) {
+      addToast("error", "Please select a position.");
+      return;
+    }
+    setInstalling(true);
+    try {
+      await api.post(`/assets/${id}/installations`, {
+        location_position_id: installPositionId,
+        installed_on: installDate
+      });
+      addToast("success", "Asset installed successfully.");
+      setInstallOpen(false);
+      await loadAsset();
+    } catch (err: any) {
+      addToast("error", err.response?.data?.detail || "Installation failed.");
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  const handleMove = async () => {
+    if (!moveLocationId) {
+      addToast("error", "Please select a destination location.");
+      return;
+    }
+    setMoving(true);
+    try {
+      await api.post(`/assets/${id}/movements`, {
+        to_location_id: moveLocationId,
+        movement_type_id: movementTypeId ? Number(movementTypeId) : null,
+        remarks: moveRemarks
+      });
+      addToast("success", "Asset moved successfully.");
+      setMoveOpen(false);
+      setMoveRemarks("");
+      await loadAsset();
+    } catch (err: any) {
+      addToast("error", err.response?.data?.detail || "Movement failed.");
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!transferProjectId) {
+      addToast("error", "Please select a target project.");
+      return;
+    }
+    setTransferring(true);
+    try {
+      await api.post(`/assets/${id}/transfer`, {
+        project_id: transferProjectId,
+        remarks: transferRemarks
+      });
+      addToast("success", "Asset transferred successfully.");
+      setTransferOpen(false);
+      setTransferRemarks("");
+      await loadAsset();
+    } catch (err: any) {
+      addToast("error", err.response?.data?.detail || "Transfer failed.");
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleDispatch = async () => {
+    setDispatching(true);
+    try {
+      await api.post(`/assets/${id}/dispatch`, {
+        fault_date: dispatchDate,
+        fault_description: faultDesc,
+        removal_date: dispatchDate,
+        dispatch_date: dispatchDate,
+        courier_number: courierNum || null,
+        vendor_id: dispatchVendorId || null,
+        rma_number: rmaNum || null
+      });
+      addToast("success", "Asset dispatched for repair.");
+      setDispatchOpen(false);
+      await loadAsset();
+    } catch (err: any) {
+      addToast("error", err.response?.data?.detail || "Dispatch failed.");
+    } finally {
+      setDispatching(false);
+    }
+  };
+
+  const handleReceive = async () => {
+    setReceiving(true);
+    try {
+      await api.post(`/assets/${id}/receive`, {
+        return_date: returnDate,
+        repair_cost: Number(repairCost) || 0,
+        repair_remarks: repairRemarks || null,
+        repair_warranty_expiry: warrantyExpiry || null
+      });
+      addToast("success", "Asset received from repair.");
+      setReceiveOpen(false);
+      await loadAsset();
+    } catch (err: any) {
+      addToast("error", err.response?.data?.detail || "Receive failed.");
+    } finally {
+      setReceiving(false);
+    }
+  };
 
   useEffect(() => {
     if (!replacementOpen || !id) return;
@@ -432,6 +606,18 @@ export const AssetDetailsPage: React.FC = () => {
               Edit Asset
             </button>
           )}
+          {asset.installation?.position_name ? (
+            <button className="btn btn-secondary" onClick={() => void handleUninstall()}>Uninstall</button>
+          ) : (
+            <button className="btn btn-secondary" onClick={() => setInstallOpen(true)}>Install</button>
+          )}
+          <button className="btn btn-secondary" onClick={() => setMoveOpen(true)}>Move Location</button>
+          <button className="btn btn-secondary" onClick={() => setTransferOpen(true)}>Transfer Project</button>
+          {asset.status.code !== "UNDER_REPAIR" ? (
+            <button className="btn btn-secondary" onClick={() => setDispatchOpen(true)}>Send for Repair</button>
+          ) : (
+            <button className="btn btn-primary" onClick={() => setReceiveOpen(true)}>Receive from Repair</button>
+          )}
           <button className="btn btn-secondary" onClick={() => setReplacementOpen(true)}>Replace Asset</button>
         </div>
       </div>
@@ -459,6 +645,38 @@ export const AssetDetailsPage: React.FC = () => {
           {!spareCandidates.length && <span style={{ color: "var(--text-secondary)" }}>No spare assets found.</span>}
         </div>
         <Input label="Replacement Reason" value={replacementReason} onChange={(event) => setReplacementReason(event.target.value)} placeholder="e.g. Camera failed to power on" required />
+      </Modal>
+
+      <Modal isOpen={installOpen} onClose={() => setInstallOpen(false)} title="Install Asset to Position" footer={<><button className="btn btn-secondary" onClick={() => setInstallOpen(false)} disabled={installing}>Cancel</button><button className="btn btn-primary" onClick={() => void handleInstall()} disabled={installing}>{installing ? "Installing..." : "Install Asset"}</button></>}>
+        <LocationSearchSelect value={installLocationId} onChange={(locId) => setInstallLocationId(locId)} projectId={asset.project.id ? String(asset.project.id) : undefined} label="Select Installation Location" />
+        <Select label="Installation Position" value={installPositionId} onChange={(e) => setInstallPositionId(e.target.value)} options={[{ label: "Select Position", value: "" }, ...installPositions.map(p => ({ label: p.position_number, value: p.id }))]} required />
+        <Input label="Installation Date" type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} required />
+      </Modal>
+
+      <Modal isOpen={moveOpen} onClose={() => setMoveOpen(false)} title="Move Asset Location" footer={<><button className="btn btn-secondary" onClick={() => setMoveOpen(false)} disabled={moving}>Cancel</button><button className="btn btn-primary" onClick={() => void handleMove()} disabled={moving}>{moving ? "Moving..." : "Record Move"}</button></>}>
+        <LocationSearchSelect value={moveLocationId} onChange={(locId) => setMoveLocationId(locId)} projectId={asset.project.id ? String(asset.project.id) : undefined} label="Destination Location" />
+        <Select label="Movement Type" value={movementTypeId} onChange={(e) => setMovementTypeId(e.target.value)} options={[{ label: "Select Movement Type", value: "" }, ...movementTypes.map(m => ({ label: m.name, value: String(m.id) }))]} />
+        <Input label="Remarks / Purpose" value={moveRemarks} onChange={(e) => setMoveRemarks(e.target.value)} placeholder="e.g. Moved to store for scheduled audit" />
+      </Modal>
+
+      <Modal isOpen={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer Project Custody" footer={<><button className="btn btn-secondary" onClick={() => setTransferOpen(false)} disabled={transferring}>Cancel</button><button className="btn btn-primary" onClick={() => void handleTransfer()} disabled={transferring}>{transferring ? "Transferring..." : "Complete Transfer"}</button></>}>
+        <Select label="Target Project" value={transferProjectId} onChange={(e) => setTransferProjectId(e.target.value)} options={[{ label: "Select Project", value: "" }, ...projects.map(p => ({ label: p.name, value: p.id }))]} required />
+        <Input label="Transfer Remarks" value={transferRemarks} onChange={(e) => setTransferRemarks(e.target.value)} placeholder="e.g. Transferred custody to Northern Sector project" />
+      </Modal>
+
+      <Modal isOpen={dispatchOpen} onClose={() => setDispatchOpen(false)} title="Dispatch for Repair (Vendor/OEM)" footer={<><button className="btn btn-secondary" onClick={() => setDispatchOpen(false)} disabled={dispatching}>Cancel</button><button className="btn btn-primary" onClick={() => void handleDispatch()} disabled={dispatching}>{dispatching ? "Dispatching..." : "Dispatch Asset"}</button></>}>
+        <Select label="Repair Vendor" value={dispatchVendorId} onChange={(e) => setDispatchVendorId(e.target.value)} options={[{ label: "Select Vendor", value: "" }, ...vendors.map(v => ({ label: v.vendor_name, value: v.id }))]} />
+        <Input label="RMA Number" value={rmaNum} onChange={(e) => setRmaNum(e.target.value)} placeholder="e.g. RMA-998877" />
+        <Input label="Courier/Waybill Number" value={courierNum} onChange={(e) => setCourierNum(e.target.value)} placeholder="e.g. DHL-554433" />
+        <Input label="Fault Description" value={faultDesc} onChange={(e) => setFaultDesc(e.target.value)} required />
+        <Input label="Dispatch Date" type="date" value={dispatchDate} onChange={(e) => setDispatchDate(e.target.value)} required />
+      </Modal>
+
+      <Modal isOpen={receiveOpen} onClose={() => setReceiveOpen(false)} title="Receive Asset from Repair" footer={<><button className="btn btn-secondary" onClick={() => setReceiveOpen(false)} disabled={receiving}>Cancel</button><button className="btn btn-primary" onClick={() => void handleReceive()} disabled={receiving}>{receiving ? "Receiving..." : "Receive Asset"}</button></>}>
+        <Input label="Return Date" type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required />
+        <Input label="Repair Cost" type="number" value={repairCost} onChange={(e) => setRepairCost(e.target.value)} required />
+        <Input label="Warranty Expiry Date" type="date" value={warrantyExpiry} onChange={(e) => setWarrantyExpiry(e.target.value)} />
+        <Input label="Repair Remarks / Report" value={repairRemarks} onChange={(e) => setRepairRemarks(e.target.value)} placeholder="e.g. Replaced internal capacitor. Back to service." />
       </Modal>
     </div>
   );

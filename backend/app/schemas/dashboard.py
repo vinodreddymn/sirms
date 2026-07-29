@@ -10,7 +10,6 @@ class DashboardSummary(BaseModel):
     total_assets: int = 0
     active_incidents: int = 0
     overdue_maintenance: int = 0
-    pending_work_orders: int = 0
 
 
 class ChartDataPoint(BaseModel):

@@ -20,7 +20,6 @@ class IncidentBase(BaseModel):
     incident_category_id: int | None = None
 
     reported_by: UUID | None = None
-    assigned_to: UUID | None = None
 
     description: str = Field(..., min_length=1)
 
@@ -44,9 +43,9 @@ class IncidentUpdate(BaseModel):
     incident_priority_id: int | None = None
     incident_category_id: int | None = None
 
-    assigned_to: UUID | None = None
     description: str | None = None
 
+    resolution_remarks: str | None = None
 
 class IncidentRead(IncidentBase):
     id: UUID
@@ -55,11 +54,14 @@ class IncidentRead(IncidentBase):
     reported_at: datetime
     created_at: datetime
     updated_at: datetime | None = None
-
+    closed_date: datetime | None = None
+    closed_by: UUID | None = None
+    resolution_remarks: str | None = None
 
 # =============================================================================
 # INCIDENT ASSET ACTIONS
 # =============================================================================
+# Supported actions: CHANGE_STATUS | MOVE | SEND_FOR_REPAIR | RETURN_FROM_REPAIR
 
 class IncidentAssetAction(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -71,6 +73,10 @@ class IncidentAssetAction(BaseModel):
 
     status_id: int | None = None
     location_id: UUID | None = None
+
+    # Fields used by RETURN_FROM_REPAIR
+    courier_number: str | None = None
+    repair_remarks: str | None = None
 
 
 # =============================================================================
@@ -98,107 +104,6 @@ class IncidentUpdateCreate(BaseModel):
 
 
 class IncidentUpdateRead(IncidentUpdateBase):
-    id: UUID
-
-    created_at: datetime
-    updated_at: datetime | None = None
-
-
-# =============================================================================
-# WORK ORDERS
-# =============================================================================
-
-class WorkOrderBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    incident_id: UUID | None = None
-
-    assigned_to: UUID | None = None
-
-    status_id: int | None = None
-
-    planned_start_date: date | None = None
-    actual_start_date: date | None = None
-    actual_end_date: date | None = None
-
-    remarks: str | None = None
-
-
-class WorkOrderCreate(WorkOrderBase):
-    pass
-
-
-class WorkOrderUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    incident_id: UUID | None = None
-    assigned_to: UUID | None = None
-
-    status_id: int | None = None
-
-    planned_start_date: date | None = None
-    actual_start_date: date | None = None
-    actual_end_date: date | None = None
-
-    remarks: str | None = None
-
-
-class WorkOrderRead(WorkOrderBase):
-    id: UUID
-
-    work_order_number: str
-
-    created_at: datetime
-    updated_at: datetime | None = None
-
-
-# =============================================================================
-# WORK ORDER TASKS
-# =============================================================================
-
-class WorkOrderTaskBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    work_order_id: UUID
-
-    description: str = Field(..., min_length=1)
-
-    task_sequence: int = 0
-
-    assigned_to: UUID | None = None
-
-    due_date: date | None = None
-
-    completed: bool = False
-
-
-class WorkOrderTaskCreate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    description: str = Field(..., min_length=1)
-
-    task_sequence: int = 0
-
-    assigned_to: UUID | None = None
-
-    due_date: date | None = None
-
-
-class WorkOrderTaskUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    description: str | None = None
-
-    task_sequence: int | None = None
-
-    assigned_to: UUID | None = None
-
-    due_date: date | None = None
-
-    completed: bool | None = None
-
-
-class WorkOrderTaskRead(WorkOrderTaskBase):
     id: UUID
 
     created_at: datetime

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ValidationException
 from app.db.session import get_db
 from app.models.asset import Asset, AssetMovement, MaintenanceHistory
-from app.models.incident import Incident, WorkOrder
+from app.models.incident import Incident
 from app.schemas.reports import ExportRequest, ReportRequest, ReportResponse
 from app.utils.export import CSVExporter, ExcelExporter
 
@@ -20,7 +20,7 @@ REPORT_MODELS = {
     "asset-register": Asset,
     "incident-register": Incident,
     "maintenance-history": MaintenanceHistory,
-    "work-orders": WorkOrder,
+
     "asset-movements": AssetMovement,
 }
 

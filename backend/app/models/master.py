@@ -145,10 +145,6 @@ class IncidentCategory(MasterLookupMixin, Base):
     __table_args__ = {"schema": "master"}
 
 
-class WorkOrderStatus(MasterLookupMixin, Base):
-    __tablename__ = "work_order_status"
-    __table_args__ = {"schema": "master"}
-
 
 class RelationshipType(MasterLookupMixin, Base):
     __tablename__ = "relationship_types"

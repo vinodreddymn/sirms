@@ -22,8 +22,9 @@ class Incident(UUIDPrimaryKeyMixin, AuditMixin, Base):
     reported_by: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
     reported_at: Mapped[datetime] = mapped_column("reported_date", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    assigned_to: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
     closed_date: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_by: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
+    resolution_remarks: Mapped[str | None] = mapped_column(Text)
 
 
 class IncidentUpdate(UUIDPrimaryKeyMixin, AuditMixin, Base):
@@ -35,33 +36,6 @@ class IncidentUpdate(UUIDPrimaryKeyMixin, AuditMixin, Base):
     updated_by: Mapped[UUID | None] = mapped_column("update_user_id", ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
     update_notes: Mapped[str] = mapped_column("remarks", Text, nullable=False)
     update_at: Mapped[datetime] = mapped_column("update_datetime", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
-
-
-class WorkOrder(UUIDPrimaryKeyMixin, AuditMixin, Base):
-    __tablename__ = "work_orders"
-    __table_args__ = ({"schema": "incident"},)
-
-    work_order_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    incident_id: Mapped[UUID] = mapped_column(ForeignKey("incident.incidents.id", ondelete="CASCADE", onupdate="RESTRICT"), nullable=False)
-    assigned_to: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
-    status_id: Mapped[int] = mapped_column("work_order_status_id", ForeignKey("master.work_order_status.id", ondelete="RESTRICT", onupdate="RESTRICT"), nullable=False)
-    planned_start_date: Mapped[date | None] = mapped_column("planned_start", Date)
-    actual_start_date: Mapped[date | None] = mapped_column("actual_start", Date)
-    actual_end_date: Mapped[date | None] = mapped_column("actual_finish", Date)
-    remarks: Mapped[str | None] = mapped_column("completion_notes", Text)
-
-
-class WorkOrderTask(UUIDPrimaryKeyMixin, AuditMixin, Base):
-    __tablename__ = "work_order_tasks"
-    __table_args__ = (
-        UniqueConstraint("work_order_id", "task_sequence", name="uq_work_order_tasks"),
-        {"schema": "incident"},
-    )
-
-    work_order_id: Mapped[UUID] = mapped_column(ForeignKey("incident.work_orders.id", ondelete="CASCADE", onupdate="RESTRICT"), nullable=False)
-    description: Mapped[str] = mapped_column("task_description", Text, nullable=False)
-    task_sequence: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    assigned_to: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
 
 
 class IncidentAttachment(UUIDPrimaryKeyMixin, AuditMixin, Base):

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import PaginatedResponse, PaginationParams, pagination_params
 from app.db.session import get_db
-from app.models.master import LocationType, PositionType, AssetCategory, AssetSubcategory, Manufacturer, AssetModel, AssetStatus, AssetCondition, AssetLifecycle, MaintenanceType, FailureCategory, RootCauseCategory, IncidentStatus, IncidentPriority, IncidentCategory, WorkOrderStatus, RelationshipType, DocumentType, PhotoType, ProjectType, UserRoleTemplate, SpecificationDefinition, MovementType, StockTransactionType
+from app.models.master import LocationType, PositionType, AssetCategory, AssetSubcategory, Manufacturer, AssetModel, AssetStatus, AssetCondition, AssetLifecycle, MaintenanceType, FailureCategory, RootCauseCategory, IncidentStatus, IncidentPriority, IncidentCategory, RelationshipType, DocumentType, PhotoType, ProjectType, UserRoleTemplate, SpecificationDefinition, MovementType, StockTransactionType
 from app.schemas.master import (
     LookupCreate, LookupRead, LookupUpdate,
     PositionTemplateCreate, PositionTemplateNodeCreate, PositionTemplateNodeRead,
@@ -30,7 +30,7 @@ lookup_models = {
     "incident-status": IncidentStatus,
     "incident-priority": IncidentPriority,
     "incident-categories": IncidentCategory,
-    "work-order-status": WorkOrderStatus,
+
     "relationship-types": RelationshipType,
     "document-types": DocumentType,
     "photo-types": PhotoType,

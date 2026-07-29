@@ -6,7 +6,7 @@ from app.dependencies.auth import get_current_user
 from app.db.session import get_db
 from app.models.asset import Asset, MaintenanceSchedule
 from app.models.common import DashboardPreference
-from app.models.incident import Incident, WorkOrder
+from app.models.incident import Incident
 from app.models.security import User
 from app.schemas.dashboard import DashboardPreferenceRead, DashboardPreferenceUpdate, DashboardSummary
 
@@ -25,14 +25,10 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dashboard
             MaintenanceSchedule.next_due_date < func.current_date(),
         )
     )
-    pending_work_orders = await db.scalar(
-        select(func.count()).select_from(WorkOrder).where(WorkOrder.actual_end_date.is_(None))
-    )
     return DashboardSummary(
         total_assets=total_assets or 0,
         active_incidents=active_incidents or 0,
         overdue_maintenance=overdue_maintenance or 0,
-        pending_work_orders=pending_work_orders or 0,
     )
 
 

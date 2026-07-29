@@ -56,36 +56,9 @@ class IncidentUpdateRepository(IncidentRepository):
         return result.scalars().all()
 
     async def count_by_incident(self, incident_id: UUID) -> int:
-        result = await self.session.execute(select(self.model).where(self.model.incident_id == incident_id))
-        return len(result.scalars().all())
-
-
-class WorkOrderRepository(IncidentRepository):
-    async def get_by_incident(self, incident_id: UUID) -> Any | None:
-        result = await self.session.execute(select(self.model).where(self.model.incident_id == incident_id))
-        return result.scalars().first()
-
-    async def list_by_incident(self, incident_id: UUID, offset: int = 0, limit: int = 100) -> list[Any]:
-        result = await self.session.execute(
-            select(self.model).where(self.model.incident_id == incident_id).offset(offset).limit(limit)
-        )
-        return result.scalars().all()
-
-    async def count_by_incident(self, incident_id: UUID) -> int:
-        result = await self.session.execute(select(self.model).where(self.model.incident_id == incident_id))
-        return len(result.scalars().all())
-
-
-class WorkOrderTaskRepository(IncidentRepository):
-    async def list_by_work_order(self, work_order_id: UUID, offset: int = 0, limit: int = 100) -> list[Any]:
-        result = await self.session.execute(
-            select(self.model).where(self.model.work_order_id == work_order_id).offset(offset).limit(limit)
-        )
-        return result.scalars().all()
-
-    async def count_by_work_order(self, work_order_id: UUID) -> int:
-        result = await self.session.execute(select(self.model).where(self.model.work_order_id == work_order_id))
-        return len(result.scalars().all())
+        return (await self.session.scalar(
+            select(func.count()).select_from(self.model).where(self.model.incident_id == incident_id)
+        )) or 0
 
 
 class IncidentAttachmentRepository(IncidentRepository):
@@ -96,5 +69,6 @@ class IncidentAttachmentRepository(IncidentRepository):
         return result.scalars().all()
 
     async def count_by_incident(self, incident_id: UUID) -> int:
-        result = await self.session.execute(select(self.model).where(self.model.incident_id == incident_id))
-        return len(result.scalars().all())
+        return (await self.session.scalar(
+            select(func.count()).select_from(self.model).where(self.model.incident_id == incident_id)
+        )) or 0

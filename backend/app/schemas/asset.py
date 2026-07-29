@@ -379,3 +379,31 @@ class AssetFieldNoteRead(AssetFieldNoteCreate):
     asset_id: UUID
     observed_at: datetime
     created_by: UUID | None = None
+
+
+class AssetUninstall(BaseModel):
+    removed_on: date | None = None
+    remarks: str | None = None
+
+
+class AssetTransfer(BaseModel):
+    project_id: UUID
+    remarks: str | None = None
+
+
+class AssetDispatch(BaseModel):
+    fault_date: date | None = None
+    fault_description: str | None = None
+    removal_date: date | None = None
+    dispatch_date: date | None = None
+    courier_number: str | None = None
+    vendor_id: UUID | None = None
+    rma_number: str | None = None
+
+
+class AssetReceive(BaseModel):
+    return_date: date | None = None
+    repair_cost: Decimal | None = None
+    repair_remarks: str | None = None
+    repair_warranty_expiry: date | None = None
+    status_code: str | None = None

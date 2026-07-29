@@ -42,6 +42,10 @@ from app.schemas.asset import (
     ReplacementAssetRead,
     RepairHistoryCreate,
     RepairHistoryRead,
+    AssetUninstall,
+    AssetTransfer,
+    AssetDispatch,
+    AssetReceive,
 )
 from app.services.asset_service import AssetService
 
@@ -353,6 +357,51 @@ async def create_asset_movement(asset_id: UUID, payload: AssetMovementCreate, db
     service = AssetService(db)
     movement = await service.create_asset_movement(asset_id, payload.model_dump())
     return AssetMovementRead.model_validate(movement)
+
+
+@router.post("/{asset_id}/uninstall", response_model=AssetInstallationRead)
+async def uninstall_asset(asset_id: UUID, payload: AssetUninstall, db: AsyncSession = Depends(get_db)) -> AssetInstallationRead:
+    service = AssetService(db)
+    try:
+        installation = await service.uninstall_asset(asset_id, payload.model_dump())
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if not installation:
+        raise HTTPException(status_code=404, detail="No active installation found")
+    return AssetInstallationRead.model_validate(installation)
+
+
+@router.post("/{asset_id}/transfer", response_model=AssetDetailsRead)
+async def transfer_asset(asset_id: UUID, payload: AssetTransfer, current_user=Depends(get_current_active_user), db: AsyncSession = Depends(get_db)) -> AssetDetailsRead:
+    service = AssetService(db)
+    try:
+        asset = await service.transfer_asset(asset_id, payload.model_dump(), current_user.id)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    details = await service.get_asset_details(asset.id)
+    if not details:
+        raise HTTPException(status_code=500, detail="Failed to load transferred asset")
+    return _build_asset_details(details)
+
+
+@router.post("/{asset_id}/dispatch", response_model=RepairHistoryRead)
+async def dispatch_asset_for_repair(asset_id: UUID, payload: AssetDispatch, current_user=Depends(get_current_active_user), db: AsyncSession = Depends(get_db)) -> RepairHistoryRead:
+    service = AssetService(db)
+    try:
+        repair = await service.dispatch_asset_for_repair(asset_id, payload.model_dump(), current_user.id)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return RepairHistoryRead.model_validate(repair)
+
+
+@router.post("/{asset_id}/receive", response_model=RepairHistoryRead)
+async def receive_asset_from_repair(asset_id: UUID, payload: AssetReceive, current_user=Depends(get_current_active_user), db: AsyncSession = Depends(get_db)) -> RepairHistoryRead:
+    service = AssetService(db)
+    try:
+        repair = await service.receive_asset_from_repair(asset_id, payload.model_dump(), current_user.id)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return RepairHistoryRead.model_validate(repair)
 
 
 def _build_asset_details(details: dict[str, object]) -> AssetDetailsRead:
