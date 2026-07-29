@@ -26,7 +26,6 @@ class AssetBase(BaseModel):
     remarks: str | None = None
     asset_role: str = "SPARE"
     health_rating: str | None = None
-    network_configuration: dict[str, object] = Field(default_factory=dict)
 
 
 class AssetCreate(AssetBase):

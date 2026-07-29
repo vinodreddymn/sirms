@@ -6,7 +6,7 @@ from io import StringIO
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import String, and_, case, cast, func, literal, or_, select
+from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -363,7 +363,6 @@ class AssetRepository:
                 func.lower(func.coalesce(Asset.serial_number, "")).like(pattern),
                 func.lower(func.coalesce(Asset.barcode, "")).like(pattern),
                 func.lower(func.coalesce(Asset.qr_code, "")).like(pattern),
-                func.lower(cast(Asset.network_configuration, String)).like(pattern),
             ))
         rows = (await self.session.execute(query)).mappings().all()
         return [dict(row) for row in rows]
@@ -434,10 +433,16 @@ class AssetRepository:
         existing_rows = (await self.session.execute(existing_query)).scalars().all()
         by_definition = {row.specification_definition_id: row for row in existing_rows}
         seen_definition_ids: set[int] = set()
+        _VALUE_FIELDS = ("value_text", "value_number", "value_boolean", "value_date", "value_json")
         for item in values:
             definition_id = item["specification_definition_id"]
-            seen_definition_ids.add(definition_id)
+            all_empty = all(item.get(f) is None for f in _VALUE_FIELDS)
             entity = by_definition.get(definition_id)
+            if all_empty:
+                if entity is not None:
+                    await self.session.delete(entity)
+                continue
+            seen_definition_ids.add(definition_id)
             if entity is None:
                 entity = AssetSpecification(asset_id=asset_id, **item)
                 self.session.add(entity)

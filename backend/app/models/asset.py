@@ -67,7 +67,6 @@ class Asset(UUIDPrimaryKeyMixin, AuditMixin, Base):
     remarks: Mapped[str | None] = mapped_column(Text)
     asset_role: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'SPARE'"))
     health_rating: Mapped[str | None] = mapped_column(String(20))
-    network_configuration: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
 
 
 class RepairHistory(UUIDPrimaryKeyMixin, Base):

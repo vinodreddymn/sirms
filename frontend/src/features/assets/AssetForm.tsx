@@ -414,6 +414,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ isOpen, onClose, onSuccess
                 value_number: event.target.value ? Number(event.target.value) : null,
               })
             }
+            required={definition.required_flag}
           />
         );
       case "BOOLEAN":
@@ -431,6 +432,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ isOpen, onClose, onSuccess
               { label: "True", value: "true" },
               { label: "False", value: "false" },
             ]}
+            required={definition.required_flag}
           />
         );
       case "DATE":
@@ -440,13 +442,14 @@ export const AssetForm: React.FC<AssetFormProps> = ({ isOpen, onClose, onSuccess
             type="date"
             value={value?.value_date ?? ""}
             onChange={(event) => handleSpecChange(definition.id, { value_date: event.target.value || null })}
+            required={definition.required_flag}
           />
         );
       case "JSON":
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
             <label style={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--text-secondary)" }}>
-              {definition.name}
+              {definition.name}{definition.required_flag && <span style={{ color: 'var(--danger, #f87171)', marginLeft: '2px' }}>*</span>}
             </label>
             <textarea
               value={
@@ -492,6 +495,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ isOpen, onClose, onSuccess
             label={definition.name}
             value={value?.value_text ?? ""}
             onChange={(event) => handleSpecChange(definition.id, { value_text: event.target.value || null })}
+            required={definition.required_flag}
           />
         );
     }

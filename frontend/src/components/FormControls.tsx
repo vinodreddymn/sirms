@@ -22,7 +22,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, er
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '8px' }}>
       {label && (
-        <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>{label}</label>
+        <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+          {label}{props.required && <span style={{ color: 'var(--danger, #f87171)', marginLeft: '2px' }}>*</span>}
+        </label>
       )}
       <div style={{ position: 'relative' }}>
         {icon && (
@@ -60,7 +62,9 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({ label,
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '8px' }}>
       {label && (
-        <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>{label}</label>
+        <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+          {label}{props.required && <span style={{ color: 'var(--danger, #f87171)', marginLeft: '2px' }}>*</span>}
+        </label>
       )}
       <select
         ref={ref}

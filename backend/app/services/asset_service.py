@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.asset import Asset, AssetFieldNote, AssetInstallation, AssetMovement, AssetRelationship, AssetReplacement, AssetSpecification, AssetTimelineEvent, RepairHistory
 from app.models.infrastructure import Location, LocationPosition
-from app.models.master import AssetModel, AssetStatus, AssetSubcategory, ManufacturerAssetScope, MovementType
+from app.models.master import AssetModel, AssetStatus, AssetSubcategory, ManufacturerAssetScope, MovementType, SpecificationDefinition
 from app.repositories.asset import (
     AssetInstallationRepository,
     AssetListFilters,
@@ -93,6 +93,8 @@ class AssetService:
         await self._validate_asset_lookup_relationships(values)
         if location_position_id:
             await self._validate_position_capacity(location_position_id)
+        if specification_values:
+            await self._validate_specifications(specification_values)
         entity = Asset(**values)
         asset = await self.repo.create(entity)
         self.session.add(AssetTimelineEvent(asset_id=asset.id, event_type="ASSET_CREATED", description="Asset registered", created_by=None))
@@ -106,6 +108,41 @@ class AssetService:
             )
         await self._save_relationships(asset.id, relationship_ids)
         return asset
+
+    async def _validate_specifications(self, specification_values: list[dict[str, Any]]) -> None:
+        if not specification_values:
+            return
+        
+        spec_def_ids = [s["specification_definition_id"] for s in specification_values]
+        result = await self.session.execute(select(SpecificationDefinition).where(SpecificationDefinition.id.in_(spec_def_ids)))
+        spec_defs = {s.id: s for s in result.scalars()}
+        
+        import re
+        
+        for spec_val in specification_values:
+            def_id = spec_val["specification_definition_id"]
+            spec_def = spec_defs.get(def_id)
+            if not spec_def:
+                raise ValueError(f"Specification definition {def_id} not found")
+            
+            # Required flag
+            if spec_def.required_flag:
+                if not any(spec_val.get(k) is not None for k in ["value_text", "value_number", "value_boolean", "value_date", "value_json"]):
+                    raise ValueError(f"Specification {spec_def.name} is required")
+            
+            # Data type
+            if spec_def.data_type == "TEXT" and spec_val.get("value_text") is not None:
+                val = spec_val["value_text"]
+                if hasattr(spec_def, "validation_regex") and getattr(spec_def, "validation_regex"):
+                    if not re.match(getattr(spec_def, "validation_regex"), val):
+                        raise ValueError(f"Specification {spec_def.name} does not match required format")
+            
+            if spec_def.data_type == "NUMBER" and spec_val.get("value_number") is not None:
+                val = spec_val["value_number"]
+                if hasattr(spec_def, "min_value") and getattr(spec_def, "min_value") is not None and val < getattr(spec_def, "min_value"):
+                    raise ValueError(f"Specification {spec_def.name} must be >= {getattr(spec_def, 'min_value')}")
+                if hasattr(spec_def, "max_value") and getattr(spec_def, "max_value") is not None and val > getattr(spec_def, "max_value"):
+                    raise ValueError(f"Specification {spec_def.name} must be <= {getattr(spec_def, 'max_value')}")
 
     async def add_repair_history(self, asset_id: UUID, values: dict[str, Any], user_id: UUID) -> RepairHistory:
         if not await self.repo.get_by_id(asset_id):
@@ -204,6 +241,7 @@ class AssetService:
         )
         asset = await self.repo.update(asset, values)
         if specification_values is not None:
+            await self._validate_specifications(specification_values)
             await self.repo.upsert_specification_values(asset_id, specification_values)
         if location_position_id is not None:
             await self._validate_position_capacity(location_position_id, asset_id=asset.id)
