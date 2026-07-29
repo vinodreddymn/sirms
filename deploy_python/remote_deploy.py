@@ -36,8 +36,15 @@ class RemoteDeployment:
         return self._run(f"cd '{self.project_path}' && {cmd}")
 
     def update_source(self):
-        self._cd("git fetch --all")
-        self._cd("git pull --ff-only")
+        branch = self.config.get("GIT_BRANCH", "main")
+
+        self._cd(f"""
+    git fetch origin
+    git checkout {branch}
+    git reset --hard origin/{branch}
+    git clean -fd
+    git submodule update --init --recursive
+    """)
 
     def install_dependencies(self):
         self._cd("if [ -d .venv ]; then . .venv/bin/activate; fi && "
