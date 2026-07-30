@@ -441,15 +441,15 @@ def _build_asset_details(details: dict[str, object]) -> AssetDetailsRead:
             related_assets=related_assets,
         )
     installation = None
-    if details.get("installation_position_id") or details.get("current_location_id"):
+    if details.get("installation_position_id") or details.get("current_location_id") or details.get("installation_status"):
         installation = AssetInstallationInfoRead(
-            location_id=details["current_location_id"],
-            location_name=details["current_location_name"],
+            location_id=details.get("current_location_id"),
+            location_name=details.get("current_location_name"),
             position_id=details.get("installation_position_id"),
             position_name=details.get("installation_position_name"),
             installed_on=details.get("installation_date"),
             removed_on=details.get("installation_removed_on"),
-            current_flag=bool(details.get("installation_current_flag", True)),
+            current_flag=bool(details.get("installation_current_flag", False)),
             installation_status=details.get("installation_status"),
             remarks=details.get("installation_remarks"),
             power_source=details.get("position_power_source"),
@@ -463,6 +463,7 @@ def _build_asset_details(details: dict[str, object]) -> AssetDetailsRead:
         )
     return AssetDetailsRead(
         id=details["id"],
+        asset_role=details.get("asset_role", "SPARE"),
         basic_information=basic_information,
         qr_code=details.get("qr_code"),
         project=AssetLookupRead(

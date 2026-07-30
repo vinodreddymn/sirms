@@ -346,6 +346,7 @@ export const IncidentDetails: React.FC = () => {
           options={[
             { value: "CHANGE_STATUS", label: "Change Asset Status" },
             { value: "MOVE", label: "Move Asset to Location" },
+            { value: "UNINSTALL", label: "Uninstall Asset from Position" },
             { value: "SEND_FOR_REPAIR", label: "Send for Repair (OEM/Vendor)" },
             { value: "RETURN_FROM_REPAIR", label: "Return from Repair" },
           ]} />

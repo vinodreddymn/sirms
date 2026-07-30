@@ -16,6 +16,7 @@ interface LocationSearchSelectProps {
   label?: string;
   selectedLabel?: string | null;
   projectId?: string;
+  locationTypeCode?: string;
   onChange: (locationId: string | null) => void;
 }
 
@@ -24,6 +25,7 @@ export const LocationSearchSelect: React.FC<LocationSearchSelectProps> = ({
   label = "Current Location",
   selectedLabel,
   projectId,
+  locationTypeCode,
   onChange,
 }) => {
   const [search, setSearch] = useState("");
@@ -42,7 +44,7 @@ export const LocationSearchSelect: React.FC<LocationSearchSelectProps> = ({
       setLoading(true);
       try {
         const response = await api.get<LocationSearchResult[]>("/infrastructure/locations/search", {
-          params: { search: query, project_id: projectId || undefined, limit: 25 },
+          params: { search: query, project_id: projectId || undefined, location_type_code: locationTypeCode || undefined, limit: 25 },
         });
         setResults(response.data);
       } catch {
@@ -52,7 +54,7 @@ export const LocationSearchSelect: React.FC<LocationSearchSelectProps> = ({
       }
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [projectId, search]);
+  }, [projectId, locationTypeCode, search]);
 
   const selectedResult = results.find((item) => item.id === value);
   const displayLabel = selectedResult ? `${selectedResult.code} · ${selectedResult.name}` : selectedLabel;

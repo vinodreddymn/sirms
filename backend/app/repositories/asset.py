@@ -249,8 +249,8 @@ class AssetRepository:
                 AssetInstallation.installation_status.label("installation_status"),
                 AssetInstallation.remarks.label("installation_remarks"),
             )
-            .where(AssetInstallation.asset_id == asset_id, AssetInstallation.current_flag.is_(True))
-            .order_by(AssetInstallation.installed_on.desc(), AssetInstallation.created_at.desc())
+            .where(AssetInstallation.asset_id == asset_id)
+            .order_by(AssetInstallation.current_flag.desc(), AssetInstallation.installed_on.desc(), AssetInstallation.created_at.desc())
             .limit(1)
             .subquery()
         )
@@ -291,6 +291,7 @@ class AssetRepository:
                 Asset.purchase_date.label("purchase_date"),
                 Asset.warranty_expiry.label("warranty_expiry"),
                 Asset.remarks.label("remarks"),
+                Asset.asset_role.label("asset_role"),
                 Asset.created_at.label("created_at"),
                 Asset.updated_at.label("updated_at"),
                 current_installation.c.position_id.label("installation_position_id"),
@@ -332,6 +333,9 @@ class AssetRepository:
         faulty = await self.session.scalar(select(Asset).where(Asset.id == asset_id))
         if not faulty:
             return []
+        
+        active_installed_ids = select(AssetInstallation.asset_id).where(AssetInstallation.current_flag.is_(True)).subquery()
+
         query = (
             select(
                 Asset.id.label("id"),
@@ -345,16 +349,23 @@ class AssetRepository:
             )
             .select_from(Asset)
             .join(AssetStatus, AssetStatus.id == Asset.asset_status_id)
-            .outerjoin(Location, Location.id == Asset.current_location_id)
+            .join(Location, Location.id == Asset.current_location_id)
+            .join(LocationType, LocationType.id == Location.location_type_id)
             .where(
                 Asset.project_id == faulty.project_id,
                 Asset.id != asset_id,
+                Asset.asset_category_id == faulty.asset_category_id,
                 Asset.is_active.is_(True),
                 Asset.asset_role == "SPARE",
+                LocationType.code == "STORE",
+                Asset.id.not_in(select(active_installed_ids.c.asset_id)),
             )
             .order_by(Asset.asset_number.asc())
             .limit(limit)
         )
+        if faulty.asset_subcategory_id is not None:
+            query = query.where(Asset.asset_subcategory_id == faulty.asset_subcategory_id)
+
         term = search.strip().lower()
         if term:
             pattern = f"%{term}%"

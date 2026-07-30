@@ -52,11 +52,17 @@ async def list_locations(
 async def search_locations(
     search: str = Query(min_length=2, max_length=100),
     project_id: UUID | None = None,
+    location_type_code: str | None = None,
     limit: int = Query(default=25, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> list[LocationSearchRead]:
     service = InfrastructureService(db)
-    return await service.search_locations(search=search.strip(), project_id=project_id, limit=limit)
+    return await service.search_locations(
+        search=search.strip(),
+        project_id=project_id,
+        location_type_code=location_type_code,
+        limit=limit,
+    )
 
 
 @router.post("/locations", response_model=LocationRead)

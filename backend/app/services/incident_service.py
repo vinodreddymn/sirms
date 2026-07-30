@@ -110,11 +110,17 @@ class IncidentService:
             raise ValueError("A reason is required")
         old_location = asset.current_location_id
         old_status = asset.asset_status_id
+        formatted_reason = f"Incident {incident.incident_number}: {reason}"
         if action == "CHANGE_STATUS":
             if values.get("status_id") is None:
                 raise ValueError("status_id is required for CHANGE_STATUS")
             asset.asset_status_id = values["status_id"]
         elif action == "MOVE":
+            if asset.asset_role == "INSTALLED":
+                raise ValueError(
+                    "Asset is currently installed at a position. "
+                    "Use the UNINSTALL action first before moving it."
+                )
             destination = await self.session.scalar(select(Location).where(Location.id == values.get("location_id"), Location.project_id == incident.project_id))
             if not destination:
                 raise ValueError("A valid destination location is required")
@@ -133,8 +139,28 @@ class IncidentService:
             movement_type = await self.session.scalar(select(MovementType).where(MovementType.code == "TRANSFER"))
             if not movement_type:
                 raise ValueError("TRANSFER movement type is not configured")
-            self.session.add(AssetMovement(asset_id=asset.id, movement_type_id=movement_type.id, from_location_id=old_location, to_location_id=destination.id, moved_at=datetime.now(), remarks=reason, created_by=user_id))
+            self.session.add(AssetMovement(asset_id=asset.id, movement_type_id=movement_type.id, from_location_id=old_location, to_location_id=destination.id, moved_at=datetime.now(), remarks=formatted_reason, created_by=user_id))
+        elif action in ("UNINSTALL", "UNINSTALLED"):
+            current_install = await self.session.scalar(
+                select(AssetInstallation)
+                .where(AssetInstallation.asset_id == asset.id, AssetInstallation.current_flag.is_(True))
+                .order_by(AssetInstallation.created_at.desc())
+            )
+            if not current_install:
+                raise ValueError("Asset has no active installation to uninstall")
+            current_install.current_flag = False
+            current_install.removed_on = date.today()
+            current_install.installation_status = "UNINSTALLED"
+            current_install.remarks = formatted_reason
+            current_install.removed_by = user_id
+            asset.current_location_id = None
+            asset.asset_role = "SPARE"
         elif action == "SEND_FOR_REPAIR":
+            if asset.asset_role == "INSTALLED":
+                raise ValueError(
+                    "Asset is currently installed at a position. "
+                    "Uninstall the asset first before sending it for repair."
+                )
             repair_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "UNDER_REPAIR"))
             if not repair_status:
                 raise ValueError("UNDER_REPAIR status is not configured")
@@ -151,7 +177,7 @@ class IncidentService:
                 current_install.removed_by = user_id
             asset.asset_status_id = repair_status.id
             asset.current_location_id = None  # no longer at a tracked location
-            self.session.add(RepairHistory(asset_id=asset.id, fault_date=date.today(), fault_description=reason, removed_from_location_id=old_location, removal_date=date.today(), created_by=user_id))
+            self.session.add(RepairHistory(asset_id=asset.id, fault_date=date.today(), fault_description=formatted_reason, removed_from_location_id=old_location, removal_date=date.today(), created_by=user_id))
         elif action == "RETURN_FROM_REPAIR":
             # Fetch the latest open RepairHistory for this asset (no return_date yet)
             repair = await self.session.scalar(
@@ -161,7 +187,7 @@ class IncidentService:
             )
             if repair:
                 repair.return_date = date.today()
-                repair.repair_remarks = values.get("repair_remarks") or reason
+                repair.repair_remarks = values.get("repair_remarks") or formatted_reason
             # Restore asset to ACTIVE status (fall back to SPARE if not found)
             active_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "ACTIVE"))
             if not active_status:
@@ -174,6 +200,6 @@ class IncidentService:
                 asset.current_location_id = repair.removed_from_location_id
         else:
             raise ValueError("Unsupported asset action")
-        self.session.add(AssetTimelineEvent(asset_id=asset.id, event_type=f"INCIDENT_{action}", description=reason, metadata_json={"incident_id": str(incident_id), "action": action, "old_location_id": str(old_location) if old_location else None, "old_status_id": old_status, "new_status_id": asset.asset_status_id, "new_location_id": str(asset.current_location_id) if asset.current_location_id else None}, created_by=user_id))
+        self.session.add(AssetTimelineEvent(asset_id=asset.id, event_type=f"INCIDENT_{action}", description=formatted_reason, metadata_json={"incident_id": str(incident_id), "action": action, "old_location_id": str(old_location) if old_location else None, "old_status_id": old_status, "new_status_id": asset.asset_status_id, "new_location_id": str(asset.current_location_id) if asset.current_location_id else None}, created_by=user_id))
         await self.session.flush()
         return asset

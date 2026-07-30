@@ -279,6 +279,7 @@ class AssetMaintenanceHistoryRead(BaseModel):
 
 class AssetDetailsRead(BaseModel):
     id: UUID
+    asset_role: str = "SPARE"
     basic_information: AssetListRead
     qr_code: str | None = None
     project: AssetLookupRead
@@ -382,6 +383,7 @@ class AssetFieldNoteRead(AssetFieldNoteCreate):
 
 
 class AssetUninstall(BaseModel):
+    to_location_id: UUID
     removed_on: date | None = None
     remarks: str | None = None
 
@@ -402,6 +404,7 @@ class AssetDispatch(BaseModel):
 
 
 class AssetReceive(BaseModel):
+    to_location_id: UUID
     return_date: date | None = None
     repair_cost: Decimal | None = None
     repair_remarks: str | None = None

@@ -88,6 +88,12 @@ export const AssetDetailsPage: React.FC = () => {
   const [installDate, setInstallDate] = useState(new Date().toISOString().split("T")[0]);
   const [installing, setInstalling] = useState(false);
 
+  const [uninstallOpen, setUninstallOpen] = useState(false);
+  const [uninstallLocationId, setUninstallLocationId] = useState<string | null>(null);
+  const [uninstallDate, setUninstallDate] = useState(new Date().toISOString().split("T")[0]);
+  const [uninstallRemarks, setUninstallRemarks] = useState("");
+  const [uninstalling, setUninstalling] = useState(false);
+
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveLocationId, setMoveLocationId] = useState<string | null>(null);
   const [movementTypes, setMovementTypes] = useState<Array<{ id: number; name: string }>>([]);
@@ -111,6 +117,7 @@ export const AssetDetailsPage: React.FC = () => {
   const [dispatching, setDispatching] = useState(false);
 
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [receiveLocationId, setReceiveLocationId] = useState<string | null>(null);
   const [returnDate, setReturnDate] = useState(new Date().toISOString().split("T")[0]);
   const [repairCost, setRepairCost] = useState("0");
   const [repairRemarks, setRepairRemarks] = useState("");
@@ -157,13 +164,24 @@ export const AssetDetailsPage: React.FC = () => {
   const isOpenLookups = !installOpen && !moveOpen && !transferOpen && !dispatchOpen;
 
   const handleUninstall = async () => {
-    if (!window.confirm("Are you sure you want to uninstall this asset?")) return;
+    if (!uninstallLocationId) {
+      addToast("error", "Please select a destination store location.");
+      return;
+    }
+    setUninstalling(true);
     try {
-      await api.post(`/assets/${id}/uninstall`, {});
+      await api.post(`/assets/${id}/uninstall`, {
+        to_location_id: uninstallLocationId,
+        removed_on: uninstallDate,
+        remarks: uninstallRemarks || null
+      });
       addToast("success", "Asset uninstalled successfully.");
+      setUninstallOpen(false);
       await loadAsset();
     } catch (err: any) {
       addToast("error", err.response?.data?.detail || "Uninstall failed.");
+    } finally {
+      setUninstalling(false);
     }
   };
 
@@ -256,9 +274,14 @@ export const AssetDetailsPage: React.FC = () => {
   };
 
   const handleReceive = async () => {
+    if (!receiveLocationId) {
+      addToast("error", "Please select a destination store location.");
+      return;
+    }
     setReceiving(true);
     try {
       await api.post(`/assets/${id}/receive`, {
+        to_location_id: receiveLocationId,
         return_date: returnDate,
         repair_cost: Number(repairCost) || 0,
         repair_remarks: repairRemarks || null,
@@ -368,8 +391,20 @@ export const AssetDetailsPage: React.FC = () => {
             <DetailGrid
               items={[
                 { label: "Current Location", value: basic.current_location || "-" },
-                { label: "Installation Position", value: asset.installation?.position_name ?? "-" },
-                { label: "Installation Status", value: asset.installation?.installation_status ?? "-" },
+                {
+                  label: "Installation Position",
+                  value: asset.installation?.position_name
+                    ? `${asset.installation.position_name}${asset.installation.current_flag ? "" : " (Historical / Uninstalled)"}`
+                    : "-",
+                },
+                {
+                  label: "Installation Status",
+                  value: asset.installation?.installation_status
+                    ? asset.installation.installation_status
+                    : asset.installation?.current_flag
+                    ? "INSTALLED"
+                    : "UNINSTALLED",
+                },
                 { label: "Installation Date", value: formatDate(asset.installation?.installed_on) },
                 { label: "Removed On", value: formatDate(asset.installation?.removed_on) },
                 { label: "Installation Remarks", value: asset.installation?.remarks ?? "-" },
@@ -606,19 +641,17 @@ export const AssetDetailsPage: React.FC = () => {
               Edit Asset
             </button>
           )}
-          {asset.installation?.position_name ? (
-            <button className="btn btn-secondary" onClick={() => void handleUninstall()}>Uninstall</button>
+          {asset.installation?.current_flag ? (
+            <>
+              <button className="btn btn-secondary" onClick={() => setUninstallOpen(true)}>Uninstall</button>
+              <button className="btn btn-secondary" onClick={() => setReplacementOpen(true)}>Replace Asset</button>
+            </>
           ) : (
-            <button className="btn btn-secondary" onClick={() => setInstallOpen(true)}>Install</button>
+            <>
+              <button className="btn btn-secondary" onClick={() => setInstallOpen(true)}>Install</button>
+              <button className="btn btn-secondary" onClick={() => setMoveOpen(true)}>Move Location</button>
+            </>
           )}
-          <button className="btn btn-secondary" onClick={() => setMoveOpen(true)}>Move Location</button>
-          <button className="btn btn-secondary" onClick={() => setTransferOpen(true)}>Transfer Project</button>
-          {asset.status.code !== "UNDER_REPAIR" ? (
-            <button className="btn btn-secondary" onClick={() => setDispatchOpen(true)}>Send for Repair</button>
-          ) : (
-            <button className="btn btn-primary" onClick={() => setReceiveOpen(true)}>Receive from Repair</button>
-          )}
-          <button className="btn btn-secondary" onClick={() => setReplacementOpen(true)}>Replace Asset</button>
         </div>
       </div>
 
@@ -653,6 +686,15 @@ export const AssetDetailsPage: React.FC = () => {
         <Input label="Installation Date" type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} required />
       </Modal>
 
+      <Modal isOpen={uninstallOpen} onClose={() => setUninstallOpen(false)} title="Uninstall Asset" footer={<><button className="btn btn-secondary" onClick={() => setUninstallOpen(false)} disabled={uninstalling}>Cancel</button><button className="btn btn-primary" onClick={() => void handleUninstall()} disabled={uninstalling}>{uninstalling ? "Uninstalling..." : "Uninstall Asset"}</button></>}>
+        <p style={{ marginTop: 0, color: "var(--text-secondary)", marginBottom: "1rem" }}>
+          The asset must be moved to a Store or holding location upon uninstallation.
+        </p>
+        <LocationSearchSelect value={uninstallLocationId} onChange={(locId) => setUninstallLocationId(locId)} projectId={asset.project.id ? String(asset.project.id) : undefined} label="Destination Store Location" />
+        <Input label="Uninstall Date" type="date" value={uninstallDate} onChange={(e) => setUninstallDate(e.target.value)} required />
+        <Input label="Remarks" value={uninstallRemarks} onChange={(e) => setUninstallRemarks(e.target.value)} placeholder="e.g. Uninstalled for replacement" />
+      </Modal>
+
       <Modal isOpen={moveOpen} onClose={() => setMoveOpen(false)} title="Move Asset Location" footer={<><button className="btn btn-secondary" onClick={() => setMoveOpen(false)} disabled={moving}>Cancel</button><button className="btn btn-primary" onClick={() => void handleMove()} disabled={moving}>{moving ? "Moving..." : "Record Move"}</button></>}>
         <LocationSearchSelect value={moveLocationId} onChange={(locId) => setMoveLocationId(locId)} projectId={asset.project.id ? String(asset.project.id) : undefined} label="Destination Location" />
         <Select label="Movement Type" value={movementTypeId} onChange={(e) => setMovementTypeId(e.target.value)} options={[{ label: "Select Movement Type", value: "" }, ...movementTypes.map(m => ({ label: m.name, value: String(m.id) }))]} />
@@ -672,11 +714,12 @@ export const AssetDetailsPage: React.FC = () => {
         <Input label="Dispatch Date" type="date" value={dispatchDate} onChange={(e) => setDispatchDate(e.target.value)} required />
       </Modal>
 
-      <Modal isOpen={receiveOpen} onClose={() => setReceiveOpen(false)} title="Receive Asset from Repair" footer={<><button className="btn btn-secondary" onClick={() => setReceiveOpen(false)} disabled={receiving}>Cancel</button><button className="btn btn-primary" onClick={() => void handleReceive()} disabled={receiving}>{receiving ? "Receiving..." : "Receive Asset"}</button></>}>
+      <Modal isOpen={receiveOpen} onClose={() => setReceiveOpen(false)} title="Receive from Repair" footer={<><button className="btn btn-secondary" onClick={() => setReceiveOpen(false)} disabled={receiving}>Cancel</button><button className="btn btn-primary" onClick={() => void handleReceive()} disabled={receiving}>{receiving ? "Receiving..." : "Receive Asset"}</button></>}>
+        <LocationSearchSelect value={receiveLocationId} onChange={(locId) => setReceiveLocationId(locId)} projectId={asset.project.id ? String(asset.project.id) : undefined} label="Destination Store Location" />
         <Input label="Return Date" type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} required />
-        <Input label="Repair Cost" type="number" value={repairCost} onChange={(e) => setRepairCost(e.target.value)} required />
-        <Input label="Warranty Expiry Date" type="date" value={warrantyExpiry} onChange={(e) => setWarrantyExpiry(e.target.value)} />
-        <Input label="Repair Remarks / Report" value={repairRemarks} onChange={(e) => setRepairRemarks(e.target.value)} placeholder="e.g. Replaced internal capacitor. Back to service." />
+        <Input label="Repair Cost" type="number" step="0.01" value={repairCost} onChange={(e) => setRepairCost(e.target.value)} />
+        <Input label="Remarks (What was repaired)" value={repairRemarks} onChange={(e) => setRepairRemarks(e.target.value)} />
+        <Input label="New Warranty Expiry (if applicable)" type="date" value={warrantyExpiry} onChange={(e) => setWarrantyExpiry(e.target.value)} />
       </Modal>
     </div>
   );

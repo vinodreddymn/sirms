@@ -27,6 +27,7 @@ class InfrastructureService:
         *,
         search: str,
         project_id: UUID | None,
+        location_type_code: str | None = None,
         limit: int,
     ) -> list[LocationSearchRead]:
         import re
@@ -41,6 +42,8 @@ class InfrastructureService:
         conditions = [or_(code_clean.ilike(f"%{search_clean}%"), name_clean.ilike(f"%{search_clean}%"))]
         if project_id is not None:
             conditions.append(Location.project_id == project_id)
+        if location_type_code is not None:
+            conditions.append(LocationType.code == location_type_code)
         result = await self.session.execute(
             select(Location, LocationType.name.label("location_type_name"))
             .join(LocationType, LocationType.id == Location.location_type_id)
