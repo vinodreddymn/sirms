@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,7 +30,7 @@ class LookupUpdate(BaseModel):
 
 
 class LookupRead(LookupBase):
-    id: int
+    id: int | UUID
     created_at: datetime
     updated_at: datetime | None = None
 

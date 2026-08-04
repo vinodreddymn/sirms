@@ -76,6 +76,27 @@ export const navigation: SidebarSection[] = [
 
     },
 
+    {
+        id: "finance",
+
+        label: "Finance",
+
+        icon: FileText,
+        children: [
+            {
+                id: "expenses",
+                label: "Expense Register",
+                path: "/expenses",
+            },
+            {
+                id: "finance-dashboard",
+                label: "Finance Dashboard",
+                path: "/expenses/dashboard",
+            }
+        ]
+
+    },
+
     /* ---------------------------------------------------------
        Maintenance
     ----------------------------------------------------------*/

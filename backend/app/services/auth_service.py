@@ -57,7 +57,10 @@ class AuthService:
         return user
 
     async def create_tokens(self, user: User) -> dict[str, str | int]:
-        access_token = create_access_token(str(user.id), {"role": "user"})
+        # include is_admin claim when user has ADMIN role
+        role_codes = await self.user_repo.get_role_codes(user.id)
+        is_admin = any(code == "ADMIN" for code in role_codes)
+        access_token = create_access_token(str(user.id), {"role": "user", "is_admin": is_admin})
         refresh_token = create_refresh_token(str(user.id), {"token_id": str(uuid4())})
         refresh = RefreshToken(
             user_id=user.id,
@@ -84,7 +87,10 @@ class AuthService:
         if not refresh:
             raise UnauthorizedException("Invalid refresh token")
 
-        access_token = create_access_token(str(user_id), {"role": "user"})
+        # include is_admin claim on refreshed access token
+        role_codes = await self.user_repo.get_role_codes(UUID(user_id))
+        is_admin = any(code == "ADMIN" for code in role_codes)
+        access_token = create_access_token(str(user_id), {"role": "user", "is_admin": is_admin})
         new_refresh_token = create_refresh_token(str(user_id), {"token_id": str(uuid4())})
         await self.refresh_repo.revoke(refresh)
         await self.refresh_repo.create(

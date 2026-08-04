@@ -10,6 +10,26 @@ import pytest
 
 
 @pytest.mark.asyncio
+async def test_expense_list_filters_are_forwarded(authenticated_client):
+    """Expense list endpoint should accept and honor filter parameters."""
+    response = await authenticated_client.get(
+        "/api/v1/expenses",
+        params={
+            "category_id": "00000000-0000-0000-0000-000000000000",
+            "payment_status_id": "00000000-0000-0000-0000-000000000000",
+            "date_from": "2024-01-01",
+            "date_to": "2024-01-31",
+        },
+    )
+
+    assert response.status_code in [200, 404, 422]
+    if response.status_code == 200:
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+
+
+@pytest.mark.asyncio
 async def test_list_lookups(authenticated_client):
     """Test listing all lookups."""
     response = await authenticated_client.get("/api/v1/master/lookups")

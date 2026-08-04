@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+import logging
+import traceback
 from starlette.requests import Request
 
 from app.api.v1.router import api_router
@@ -23,8 +25,15 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await dispose_engine()
 
 
-async def unhandled_exception_handler(_: Request, __: Exception) -> ORJSONResponse:
-    return ORJSONResponse(status_code=500, content={"detail": "An unexpected server error occurred"})
+async def unhandled_exception_handler(request: Request, exc: Exception) -> ORJSONResponse:
+    logging.exception("Unhandled exception during request: %s %s", request.method, request.url)
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    settings = get_settings()
+    if settings.is_production:
+        content = {"detail": "An unexpected server error occurred"}
+    else:
+        content = {"detail": str(exc), "traceback": tb}
+    return ORJSONResponse(status_code=500, content=content)
 
 
 def create_app() -> FastAPI:
@@ -37,6 +46,23 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         default_response_class=ORJSONResponse,
     )
+    @app.middleware("http")
+    async def ensure_cors_headers(request: Request, call_next):
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            # Delegate to the unified unhandled exception handler so development
+            # tracebacks are included in the response content.
+            response = await unhandled_exception_handler(request, exc)
+        origin = request.headers.get("origin")
+        if origin:
+            response.headers.setdefault("Access-Control-Allow-Origin", origin)
+            response.headers.setdefault("Access-Control-Allow-Credentials", "true")
+            response.headers.setdefault("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+            response.headers.setdefault("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept")
+        else:
+            response.headers.setdefault("Access-Control-Allow-Origin", "*")
+        return response
 
     app.add_middleware(
         CORSMiddleware,
@@ -53,6 +79,8 @@ def create_app() -> FastAPI:
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+
 
     return app
 

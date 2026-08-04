@@ -4,6 +4,10 @@ import MainLayout from './layouts/MainLayout';
 import { Login } from './features/auth/Login';
 import { Dashboard } from './features/dashboard/Dashboard';
 import { AssetList } from './features/assets/AssetList';
+import { ExpenseList } from './features/finance/ExpenseList';
+import { ExpenseForm } from './features/finance/ExpenseForm';
+import { ExpenseDetails } from './features/finance/ExpenseDetails';
+import { FinanceDashboard } from './features/finance/FinanceDashboard';
 import { AssetDetailsPage } from './features/assets/AssetDetails';
 import { AssetMovementsPage } from './features/assets/AssetMovementsPage';
 import { IncidentList } from './features/incidents/IncidentList';
@@ -44,6 +48,11 @@ function App() {
             <Route path="assets/:id" element={<AssetDetailsPage />} />
             <Route path="incidents" element={<IncidentList />} />
             <Route path="incidents/:id" element={<IncidentDetails />} />
+            <Route path="expenses" element={<ExpenseList />} />
+            <Route path="expenses/dashboard" element={<FinanceDashboard />} />
+            <Route path="expenses/new" element={<ExpenseForm mode="create" />} />
+            <Route path="expenses/:id" element={<ExpenseDetails />} />
+            <Route path="expenses/:id/edit" element={<ExpenseForm mode="edit" />} />
             <Route path="maintenance" element={<MaintenanceStub />} />
             <Route path="daily-work-log" element={<DailyWorkLog />} />
             <Route path="reports" element={<Reports />} />

@@ -1,5 +1,8 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, Integer, String, Text, UniqueConstraint, text, DateTime
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
+from uuid import UUID
+from datetime import datetime
 
 from app.db.base import AuditMixin, Base, BigIntPrimaryKeyMixin, MasterLookupMixin
 
@@ -191,6 +194,44 @@ class SpecificationDefinition(BigIntPrimaryKeyMixin, AuditMixin, Base):
 class MovementType(MasterLookupMixin, Base):
     __tablename__ = "movement_types"
     __table_args__ = {"schema": "master"}
+
+
+class ExpenseCategory(Base):
+    __tablename__ = "expense_categories"
+    __table_args__ = {"schema": "master"}
+
+    id: Mapped[UUID] = mapped_column("expense_category_id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    code: Mapped[str] = mapped_column("category_code", String(30), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column("category_name", String(100), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class PaymentMode(Base):
+    __tablename__ = "payment_modes"
+    __table_args__ = {"schema": "master"}
+
+    id: Mapped[UUID] = mapped_column("payment_mode_id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    code: Mapped[str] = mapped_column("payment_mode_code", String(30), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column("payment_mode_name", String(100), nullable=False, unique=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+
+
+class PaymentStatus(Base):
+    __tablename__ = "payment_statuses"
+    __table_args__ = {"schema": "master"}
+
+    id: Mapped[UUID] = mapped_column("payment_status_id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    code: Mapped[str] = mapped_column("status_code", String(30), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column("status_name", String(100), nullable=False, unique=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
 
 
 class StockTransactionType(BigIntPrimaryKeyMixin, AuditMixin, Base):

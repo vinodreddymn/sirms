@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import PaginatedResponse, PaginationParams, pagination_params
 from app.db.session import get_db
-from app.models.master import LocationType, PositionType, AssetCategory, AssetSubcategory, Manufacturer, AssetModel, AssetStatus, AssetCondition, AssetLifecycle, MaintenanceType, FailureCategory, RootCauseCategory, IncidentStatus, IncidentPriority, IncidentCategory, RelationshipType, DocumentType, PhotoType, ProjectType, UserRoleTemplate, SpecificationDefinition, MovementType, StockTransactionType
+from app.models.master import LocationType, PositionType, AssetCategory, AssetSubcategory, Manufacturer, AssetModel, AssetStatus, AssetCondition, AssetLifecycle, MaintenanceType, FailureCategory, RootCauseCategory, IncidentStatus, IncidentPriority, IncidentCategory, RelationshipType, DocumentType, PhotoType, ProjectType, UserRoleTemplate, SpecificationDefinition, MovementType, StockTransactionType, ExpenseCategory, PaymentMode, PaymentStatus
 from app.schemas.master import (
     LookupCreate, LookupRead, LookupUpdate,
     PositionTemplateCreate, PositionTemplateNodeCreate, PositionTemplateNodeRead,
@@ -38,6 +38,9 @@ lookup_models = {
     "user-role-templates": UserRoleTemplate,
     "movement-types": MovementType,
     "stock-transaction-types": StockTransactionType,
+    "expense-categories": ExpenseCategory,
+    "payment-modes": PaymentMode,
+    "payment-statuses": PaymentStatus,
 }
 
 
