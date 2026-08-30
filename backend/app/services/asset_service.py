@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.asset import Asset, AssetFieldNote, AssetInstallation, AssetMovement, AssetRelationship, AssetReplacement, AssetSpecification, AssetTimelineEvent, RepairHistory
 from app.models.infrastructure import Location, LocationPosition
 from app.models.master import AssetModel, AssetStatus, AssetSubcategory, ManufacturerAssetScope, MovementType, SpecificationDefinition
+from app.models.incident import Incident, WorkAction
 from app.repositories.asset import (
     AssetInstallationRepository,
     AssetListFilters,
@@ -18,6 +19,7 @@ from app.repositories.asset import (
     AssetRepository,
     AssetSpecificationRepository,
 )
+from app.services.asset_lifecycle_service import AssetLifecycleService
 
 
 class AssetService:
@@ -150,6 +152,53 @@ class AssetService:
                     raise ValueError(f"Specification {spec_def.name} must be >= {getattr(spec_def, 'min_value')}")
                 if hasattr(spec_def, "max_value") and getattr(spec_def, "max_value") is not None and val > getattr(spec_def, "max_value"):
                     raise ValueError(f"Specification {spec_def.name} must be <= {getattr(spec_def, 'max_value')}")
+
+    async def apply_asset_action(self, incident_id: UUID, values: dict[str, Any], user_id: UUID | None) -> Asset:
+        if not user_id:
+            raise ValueError("user_id is required for asset actions")
+        incident = await self.session.get(Incident, incident_id)
+        if not incident:
+            raise ValueError("Incident not found")
+        if incident.incident_status_id is None:
+            raise ValueError("Incident has no status")
+        asset = await self.session.get(Asset, values["asset_id"])
+        if not asset or asset.project_id != incident.project_id:
+            raise ValueError("Asset does not belong to the incident project")
+        action = values["action"].upper()
+        reason = values["reason"].strip()
+        if not reason:
+            raise ValueError("A reason is required")
+
+        lifecycle = AssetLifecycleService(self.session)
+        formatted_reason = f"Work Request {incident.work_request_number}: {reason}"
+
+        if action == "CHANGE_STATUS":
+            if values.get("status_id") is None:
+                raise ValueError("status_id is required for CHANGE_STATUS")
+            await lifecycle.change_status(asset.id, values["status_id"], user_id, incident_id, formatted_reason)
+        elif action == "MOVE":
+            if values.get("location_id") is None:
+                raise ValueError("location_id is required for MOVE")
+            await lifecycle.move_asset(asset.id, values["location_id"], user_id, incident_id, formatted_reason)
+        elif action == "INSTALL":
+            if values.get("location_position_id") is None:
+                raise ValueError("location_position_id is required for INSTALL")
+            await lifecycle.install_asset(asset.id, values["location_position_id"], user_id, incident_id, formatted_reason)
+        elif action in ("UNINSTALL", "UNINSTALLED"):
+            if values.get("location_id") is None:
+                raise ValueError("location_id (Store) is required for UNINSTALL")
+            await lifecycle.uninstall_asset(asset.id, values["location_id"], user_id, incident_id, formatted_reason)
+        elif action == "SEND_FOR_REPAIR":
+            await lifecycle.dispatch_for_repair(asset.id, values.get("vendor_id"), values.get("courier_number"), date.today(), formatted_reason, user_id, incident_id)
+        elif action == "RETURN_FROM_REPAIR":
+            if values.get("location_id") is None:
+                raise ValueError("location_id (Store) is required to RETURN_FROM_REPAIR")
+            await lifecycle.receive_from_repair(asset.id, values["location_id"], date.today(), None, values.get("repair_remarks") or formatted_reason, values.get("status_code"), user_id, incident_id)
+        else:
+            raise ValueError("Unsupported asset action")
+
+        await self.session.flush()
+        return asset
 
     async def add_repair_history(self, asset_id: UUID, values: dict[str, Any], user_id: UUID) -> RepairHistory:
         if not await self.repo.get_by_id(asset_id):
@@ -370,108 +419,10 @@ class AssetService:
         return items, await repo.count_by_asset(asset_id)
 
     async def create_asset_installation(self, asset_id: UUID, values: dict[str, Any]) -> AssetInstallation:
-        asset = await self.session.get(Asset, asset_id)
-        if not asset:
-            raise ValueError("Asset not found")
-        if await self._has_active_installation(asset_id):
-            raise ValueError(
-                "Asset is currently installed. Uninstall the asset first before installing it at a new position."
-            )
-        pos_id = values["location_position_id"]
-        await self._validate_position_capacity(pos_id, asset_id=asset_id)
-        current_query = select(AssetInstallation).where(
-            AssetInstallation.asset_id == asset_id,
-            AssetInstallation.current_flag.is_(True)
-        )
-        current = (await self.session.execute(current_query)).scalars().first()
-        if current:
-            current.current_flag = False
-            current.installation_status = "REMOVED"
-            current.removed_on = values.get("installed_on") or date.today()
-        pos = await self.session.get(LocationPosition, pos_id)
-        if not pos:
-            raise ValueError("Position not found")
-        old_location_id = asset.current_location_id
-        asset.current_location_id = pos.location_id
-        asset.asset_role = "INSTALLED"
-        installed_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "INSTALLED"))
-        if installed_status:
-            asset.asset_status_id = installed_status.id
-        transfer_type = await self.session.scalar(
-            select(MovementType).where(MovementType.code == "TRANSFER")
-        )
-        self.session.add(AssetMovement(
-            asset_id=asset_id,
-            movement_type_id=transfer_type.id if transfer_type else None,
-            from_location_id=old_location_id,
-            to_location_id=pos.location_id,
-            remarks=values.get("remarks") or f"Installed to position {pos.position_number}",
-            moved_at=datetime.now()
-        ))
-        values["asset_id"] = asset_id
-        values["current_flag"] = True
-        values["installation_status"] = "INSTALLED"
-        entity = AssetInstallation(**values)
-        repo = AssetInstallationRepository(self.session)
-        result = await repo.create(entity)
-        self.session.add(AssetTimelineEvent(
-            asset_id=asset_id,
-            event_type="ASSET_INSTALLED",
-            description=f"Installed to position {pos.position_number}",
-            metadata_json={"location_position_id": str(pos_id), "location_id": str(pos.location_id)}
-        ))
-        await self.session.flush()
-        return result
+        raise ValueError("Direct asset installation is not allowed. All installations must be performed through a Work Request.")
 
     async def uninstall_asset(self, asset_id: UUID, values: dict[str, Any] | None = None) -> AssetInstallation | None:
-        current_query = select(AssetInstallation).where(
-            AssetInstallation.asset_id == asset_id,
-            AssetInstallation.current_flag.is_(True)
-        )
-        current = (await self.session.execute(current_query)).scalars().first()
-        if not current:
-            raise ValueError("Asset has no active installation")
-        to_location_id = (values or {}).get("to_location_id")
-        if not to_location_id:
-            raise ValueError(
-                "A destination store/location is required when uninstalling an asset. "
-                "The asset must be moved to a store or holding location."
-            )
-        current.current_flag = False
-        current.installation_status = "UNINSTALLED"
-        current.removed_on = (values or {}).get("removed_on") or date.today()
-        current.remarks = (values or {}).get("remarks") or "Uninstalled"
-        asset = await self.session.get(Asset, asset_id)
-        if asset:
-            old_location_id = asset.current_location_id
-            asset.current_location_id = to_location_id
-            asset.asset_role = "SPARE"
-            spare_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "SPARE"))
-            if spare_status:
-                asset.asset_status_id = spare_status.id
-            # Record a movement from the installed location to the store
-            transfer_type = await self.session.scalar(
-                select(MovementType).where(MovementType.code == "TRANSFER")
-            )
-            self.session.add(AssetMovement(
-                asset_id=asset_id,
-                movement_type_id=transfer_type.id if transfer_type else None,
-                from_location_id=old_location_id,
-                to_location_id=to_location_id,
-                remarks=(values or {}).get("remarks") or "Uninstalled and moved to store",
-                moved_at=datetime.now()
-            ))
-        self.session.add(AssetTimelineEvent(
-            asset_id=asset_id,
-            event_type="ASSET_UNINSTALLED",
-            description="Uninstalled from position and moved to store",
-            metadata_json={
-                "location_position_id": str(current.location_position_id),
-                "to_location_id": str(to_location_id),
-            }
-        ))
-        await self.session.flush()
-        return current
+        raise ValueError("Direct asset uninstallation is not allowed. All uninstallations must be performed through a Work Request.")
 
     async def list_asset_movements(self, asset_id: UUID, offset: int = 0, limit: int = 100) -> tuple[list[AssetMovement], int]:
         repo = AssetMovementRepository(self.session)
@@ -479,37 +430,7 @@ class AssetService:
         return items, await repo.count_by_asset(asset_id)
 
     async def create_asset_movement(self, asset_id: UUID, values: dict[str, Any]) -> AssetMovement:
-        asset = await self.session.get(Asset, asset_id)
-        if not asset:
-            raise ValueError("Asset not found")
-        if await self._has_active_installation(asset_id):
-            raise ValueError(
-                "Asset is currently installed at a position. "
-                "Uninstall the asset first before moving it to another location."
-            )
-        old_location_id = asset.current_location_id
-        to_location_id = values.get("to_location_id")
-        asset.current_location_id = to_location_id
-        values["asset_id"] = asset_id
-        values["from_location_id"] = old_location_id
-        values.pop("quantity", None)
-        if "moved_at" not in values or not values["moved_at"]:
-            values["moved_at"] = datetime.now()
-        entity = AssetMovement(**values)
-        repo = AssetMovementRepository(self.session)
-        result = await repo.create(entity)
-        self.session.add(AssetTimelineEvent(
-            asset_id=asset_id,
-            event_type="ASSET_MOVED",
-            description=values.get("remarks") or f"Moved from location {old_location_id} to {to_location_id}",
-            metadata_json={
-                "from_location_id": str(old_location_id) if old_location_id else None,
-                "to_location_id": str(to_location_id) if to_location_id else None,
-                "movement_type_id": values.get("movement_type_id")
-            }
-        ))
-        await self.session.flush()
-        return result
+        raise ValueError("Direct asset movement is not allowed. All movements must be performed through a Work Request.")
 
     async def transfer_asset(self, asset_id: UUID, values: dict[str, Any], user_id: UUID | None = None) -> Asset:
         from app.models.common import Project
@@ -553,86 +474,27 @@ class AssetService:
         return asset
 
     async def dispatch_asset_for_repair(self, asset_id: UUID, values: dict[str, Any], user_id: UUID) -> RepairHistory:
-        asset = await self.session.get(Asset, asset_id)
-        if not asset:
-            raise ValueError("Asset not found")
-        if await self._has_active_installation(asset_id):
-            raise ValueError(
-                "Asset is currently installed at a position. "
-                "Uninstall the asset and move it to a store before dispatching for repair."
-            )
-        if not asset.current_location_id:
-            raise ValueError("Asset has no current location.")
-        from app.models.master import LocationType
-        location_type = await self.session.scalar(
-            select(LocationType).join(Location, Location.location_type_id == LocationType.id)
-            .where(Location.id == asset.current_location_id)
-        )
-        if not location_type or location_type.code != "STORE":
-            raise ValueError("Asset must be located in a STORE before dispatching for repair.")
-        repair_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "UNDER_REPAIR"))
-        if not repair_status:
-            raise ValueError("UNDER_REPAIR status is not configured")
-        asset.asset_status_id = repair_status.id
-        repair = RepairHistory(
+        # Directly call lifecycle service since dispatch is not tied to work requests
+        lifecycle = AssetLifecycleService(self.session)
+        return await lifecycle.dispatch_for_repair(
             asset_id=asset_id,
-            fault_date=values.get("fault_date") or date.today(),
-            fault_description=values.get("fault_description") or "Sent for repair",
-            removed_from_location_id=asset.current_location_id,
-            removal_date=values.get("removal_date") or date.today(),
-            dispatch_date=values.get("dispatch_date") or date.today(),
-            courier_number=values.get("courier_number"),
             vendor_id=values.get("vendor_id"),
-            rma_number=values.get("rma_number"),
-            created_by=user_id
+            courier_number=values.get("courier_number"),
+            fault_date=values.get("fault_date"),
+            fault_description=values.get("fault_description"),
+            user_id=user_id,
+            dispatch_id=values.get("dispatch_id")
         )
-        self.session.add(repair)
-        self.session.add(AssetTimelineEvent(
-            asset_id=asset_id,
-            event_type="REPAIR_DISPATCHED",
-            description=f"Dispatched for repair to vendor. Courier: {values.get('courier_number') or 'N/A'}",
-            created_by=user_id
-        ))
-        await self.session.flush()
-        return repair
 
     async def receive_asset_from_repair(self, asset_id: UUID, values: dict[str, Any], user_id: UUID) -> RepairHistory:
-        to_location_id = values.get("to_location_id")
-        if not to_location_id:
-            raise ValueError("A destination STORE location is required to receive the asset.")
-        from app.models.master import LocationType
-        location_type = await self.session.scalar(
-            select(LocationType).join(Location, Location.location_type_id == LocationType.id)
-            .where(Location.id == to_location_id)
-        )
-        if not location_type or location_type.code != "STORE":
-            raise ValueError("Destination location must be a STORE.")
-
-        repair_query = select(RepairHistory).where(
-            RepairHistory.asset_id == asset_id,
-            RepairHistory.return_date.is_(None)
-        ).order_by(RepairHistory.created_at.desc())
-        repair = (await self.session.execute(repair_query)).scalars().first()
-        if not repair:
-            raise ValueError("No active repair record found to return this asset from")
-        repair.return_date = values.get("return_date") or date.today()
-        repair.repair_cost = values.get("repair_cost")
-        repair.repair_remarks = values.get("repair_remarks")
-        repair.repair_warranty_expiry = values.get("repair_warranty_expiry")
-        status_code = values.get("status_code") or "ACTIVE"
-        target_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == status_code))
-        if not target_status:
-            target_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "SPARE"))
-        asset = await self.session.get(Asset, asset_id)
-        if asset and target_status:
-            asset.asset_status_id = target_status.id
-            asset.current_location_id = to_location_id
-            asset.asset_role = "SPARE"
-        self.session.add(AssetTimelineEvent(
+        lifecycle = AssetLifecycleService(self.session)
+        return await lifecycle.receive_from_repair(
             asset_id=asset_id,
-            event_type="REPAIR_RETURNED",
-            description=f"Returned from repair. Cost: {values.get('repair_cost') or 0.00}",
-            created_by=user_id
-        ))
-        await self.session.flush()
-        return repair
+            to_location_id=values.get("to_location_id"),
+            return_date=values.get("return_date"),
+            repair_cost=values.get("repair_cost"),
+            repair_remarks=values.get("repair_remarks"),
+            status_code=values.get("status_code"),
+            user_id=user_id,
+            dispatch_id=values.get("dispatch_id")
+        )

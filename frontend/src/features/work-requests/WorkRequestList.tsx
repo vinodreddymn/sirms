@@ -2,23 +2,30 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search, AlertTriangle, CheckCircle, Clock, AlertCircle } from "lucide-react";
 
-import { Input, Select } from "../../components/FormControls";
+import { Input, Select, TextArea } from "../../components/FormControls";
 import { Modal } from "../../components/Modal";
 import { api } from "../../services/api";
 import { useToast } from "../../contexts/ToastContext";
 import { LocationSearchSelect } from "../assets/LocationSearchSelect";
-import type { Incident, Paginated, Lookup } from "./types";
+import type { WorkRequest, Paginated, Lookup } from "./types";
 
-type IncidentTarget = "asset" | "location";
+type WorkRequestTarget = "asset" | "location";
 
 const newForm = {
   project_id: "",
+  work_type_id: "",
   incident_category_id: "",
   incident_priority_id: "",
   incident_status_id: "",
   asset_id: "",
   location_id: "",
   description: "",
+  // Simple workflow additions
+  requester_name: "",
+  requester_email: "",
+  acceptance_criteria: "",
+  target_date: "",
+  fast_track: false,
 };
 
 const priorityColor: Record<string, string> = {
@@ -57,36 +64,39 @@ const PriorityIcon: React.FC<{ code?: string }> = ({ code }) => {
   return <Clock size={14} style={{ color: "#f59e0b" }} />;
 };
 
-export const IncidentList: React.FC = () => {
+export const WorkRequestList: React.FC = () => {
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const [data, setData] = useState<Paginated<Incident> | null>(null);
+  const [data, setData] = useState<Paginated<WorkRequest> | null>(null);
   const [search, setSearch] = useState("");
   const [isOpen, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [target, setTarget] = useState<IncidentTarget>("asset");
+  const [target, setTarget] = useState<WorkRequestTarget>("asset");
 
   const [projects, setProjects] = useState<Lookup[]>([]);
+  const [workTypes, setWorkTypes] = useState<Lookup[]>([]);
   const [assets, setAssets] = useState<{ id: string; asset_number: string }[]>([]);
   const [categories, setCategories] = useState<Lookup[]>([]);
   const [priorities, setPriorities] = useState<Lookup[]>([]);
   const [statuses, setStatuses] = useState<Lookup[]>([]);
   const [form, setForm] = useState(newForm);
 
+  const displayLabel = (r: any) => r?.name ?? r?.description ?? r?.project_name ?? r?.asset_number ?? String(r?.id ?? "");
+
   const lkOpts = (rows: Lookup[], placeholder: string) =>
-    [{ value: "", label: placeholder }, ...rows.map(r => ({ value: String(r.id), label: r.name }))];
+    [{ value: "", label: placeholder }, ...rows.map(r => ({ value: String(r.id), label: displayLabel(r) }))];
 
   const defaultId = (rows: Lookup[], code: string) =>
     String(rows.find(r => r.code === code)?.id || "");
 
   const load = async () => {
     try {
-      const res = await api.get<Paginated<Incident>>("/incidents", {
+      const res = await api.get<Paginated<WorkRequest>>("/work-requests", {
         params: { page_size: 100, search: search || undefined },
       });
       setData(res.data);
-    } catch { addToast("error", "Could not load incidents."); }
+    } catch { addToast("error", "Could not load work requests."); }
   };
 
   useEffect(() => { void load(); }, [search]);
@@ -94,20 +104,24 @@ export const IncidentList: React.FC = () => {
   useEffect(() => {
     void Promise.all([
       api.get("/common/projects", { params: { page_size: 100 } }),
+      api.get("/master/work-types", { params: { page_size: 100 } }),
       api.get("/master/incident-categories", { params: { page_size: 100 } }),
       api.get("/master/incident-priority", { params: { page_size: 100 } }),
       api.get("/master/incident-status", { params: { page_size: 100 } }),
       api.get("/users", { params: { page_size: 100 } }),
-    ]).then(([p, c, pr, s, _]) => {
+    ]).then(([p, w, c, pr, s, _]) => {
+      const wts = w.data.items as Lookup[];
       const cats = c.data.items as Lookup[];
       const pris = pr.data.items as Lookup[];
       const sts = s.data.items as Lookup[];
       setProjects(p.data.items.map((pj: any) => ({ id: pj.id, name: pj.project_code ? `${pj.project_code} · ${pj.project_name}` : pj.project_name })));
+      setWorkTypes(wts);
       setCategories(cats);
       setPriorities(pris);
       setStatuses(sts);
       setForm(f => ({
         ...f,
+        work_type_id: f.work_type_id || defaultId(wts, "INCIDENT"),
         incident_category_id: f.incident_category_id || defaultId(cats, "ASSET_FAILURE"),
         incident_priority_id: f.incident_priority_id || defaultId(pris, "MEDIUM"),
         incident_status_id: f.incident_status_id || defaultId(sts, "OPEN"),
@@ -126,34 +140,63 @@ export const IncidentList: React.FC = () => {
     setTarget("asset");
     setForm({
       ...newForm,
+      work_type_id: defaultId(workTypes, "INCIDENT"),
       incident_category_id: defaultId(categories, "ASSET_FAILURE"),
       incident_priority_id: defaultId(priorities, "MEDIUM"),
       incident_status_id: defaultId(statuses, "OPEN"),
+    });
+    // Auto-populate requester details from the currently authenticated user, if available
+    api.get('/users/me').then(res => {
+      const u = res.data;
+      setForm(f => ({ ...f, requester_name: u.full_name || u.username || '', requester_email: u.email || '' }));
+    }).catch(() => {
+      // If user profile not available (not authenticated or endpoint missing), leave fields editable
     });
     setOpen(true);
   };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (target === "asset" && !form.asset_id) { addToast("error", "Select the affected asset."); return; }
-    if (target === "location" && !form.location_id) { addToast("error", "Select the affected location."); return; }
-    setSaving(true);
-    try {
-      await api.post("/incidents", {
-        ...form,
-        incident_category_id: Number(form.incident_category_id),
-        incident_priority_id: Number(form.incident_priority_id),
-        incident_status_id: Number(form.incident_status_id),
-        asset_id: form.asset_id || null,
-        location_id: form.location_id || null,
-      });
-      setOpen(false);
-      await load();
-      addToast("success", "Incident registered.");
-    } catch (err: any) {
-      addToast("error", err.response?.data?.detail || "Could not register incident.");
-    } finally { setSaving(false); }
-  };
+      // Minimal required validations for the simple workflow
+      if (!form.acceptance_criteria) { addToast("error", "Please provide acceptance criteria."); return; }
+      if (target === "asset" && !form.asset_id) { addToast("error", "Select the affected asset."); return; }
+      if (target === "location" && !form.location_id) { addToast("error", "Select the affected location."); return; }
+      setSaving(true);
+      try {
+        // Attempt to read the signed-in user's profile and include name/email in the payload.
+        let requester_name_payload: string | null = form.requester_name || null;
+        let requester_email_payload: string | null = form.requester_email || null;
+        try {
+          const ures = await api.get('/users/me');
+          const u = ures.data || {};
+          requester_name_payload = (u.full_name || u.username || requester_name_payload) ?? null;
+          requester_email_payload = (u.email || requester_email_payload) ?? null;
+        } catch {
+          // ignore - fall back to any values present on the form
+        }
+
+        await api.post("/work-requests", {
+          ...form,
+          work_type_id: form.work_type_id || null,
+          incident_category_id: Number(form.incident_category_id),
+          incident_priority_id: Number(form.incident_priority_id),
+          incident_status_id: Number(form.incident_status_id),
+          asset_id: form.asset_id || null,
+          location_id: form.location_id || null,
+          // Simple workflow fields
+          requester_name: requester_name_payload || null,
+          requester_email: requester_email_payload || null,
+          acceptance_criteria: form.acceptance_criteria || null,
+          target_date: form.target_date || null,
+          fast_track: !!form.fast_track,
+        });
+        setOpen(false);
+        await load();
+        addToast("success", "Work request registered.");
+      } catch (err: any) {
+        addToast("error", err.response?.data?.detail || "Could not register work request.");
+      } finally { setSaving(false); }
+    };
 
   const openCount = data?.items.filter(i => {
     const code = statuses.find(s => Number(s.id) === i.incident_status_id)?.code;
@@ -170,13 +213,13 @@ export const IncidentList: React.FC = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
         <div>
-          <h1>Incidents</h1>
+          <h1>Work Requests</h1>
           <p style={{ color: "var(--text-secondary)", margin: 0 }}>
-            Capture, investigate, and resolve operational incidents across all sites.
+            Capture, track, and resolve operational work requests, service requests, and maintenance actions across all sites.
           </p>
         </div>
         <button className="btn btn-primary" onClick={openForm}>
-          <Plus size={16} /> Register Incident
+          <Plus size={16} /> Register Work Request
         </button>
       </div>
 
@@ -213,7 +256,7 @@ export const IncidentList: React.FC = () => {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by incident number or description..."
+          placeholder="Search by request number, description, asset, or location..."
           style={{
             width: "100%",
             padding: "0.65rem 1rem 0.65rem 2.4rem",
@@ -227,12 +270,12 @@ export const IncidentList: React.FC = () => {
         />
       </div>
 
-      {/* Incident Table */}
+      {/* WorkRequest Table */}
       <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-              {["Incident", "Status", "Priority", "Reported", "Description"].map(h => (
+              {['Work Request #', 'Type', 'Target', 'Status', 'Priority', 'Requested', 'Description'].map(h => (
                 <th key={h} style={{ padding: "0.9rem 1rem", textAlign: "left", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-secondary)", fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
@@ -240,7 +283,7 @@ export const IncidentList: React.FC = () => {
           <tbody>
             {(data?.items || []).length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>No incidents found.</td>
+                <td colSpan={7} style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>No work requests found.</td>
               </tr>
             )}
             {(data?.items || []).map(row => {
@@ -248,8 +291,11 @@ export const IncidentList: React.FC = () => {
               const priority = priorities.find(p => Number(p.id) === row.incident_priority_id);
               const sColor = statusColor[status?.code || ""] || "#6b7280";
               const pColor = priorityColor[priority?.code || ""] || "#6b7280";
+              const targetLabel = row.asset_id ? "Asset" : row.location_id ? "Location" : "General";
+              const wtFound = workTypes.find(wt => String(wt.id) === row.work_type_id);
+              const typeName = wtFound ? (wtFound.name || (wtFound as any).description || String(wtFound.id)) : (row.work_type_id || "General");
               return (
-                <tr key={row.id} onClick={() => navigate(`/incidents/${row.id}`)}
+                <tr key={row.id} onClick={() => navigate(`/work-requests/${row.id}`)}
                   style={{ borderBottom: "1px solid var(--border-color)", cursor: "pointer", transition: "background 0.15s" }}
                   onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-secondary)")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
@@ -258,6 +304,12 @@ export const IncidentList: React.FC = () => {
                       <PriorityIcon code={priority?.code} />
                       {row.incident_number}
                     </div>
+                  </td>
+                  <td style={{ padding: "0.85rem 1rem", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                    {typeName}
+                  </td>
+                  <td style={{ padding: "0.85rem 1rem", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                    {targetLabel}
                   </td>
                   <td style={{ padding: "0.85rem 1rem" }}>
                     <Badge label={status?.name || String(row.incident_status_id)} color={sColor} />
@@ -278,13 +330,21 @@ export const IncidentList: React.FC = () => {
         </table>
       </div>
 
-      {/* Register Incident Modal */}
-      <Modal isOpen={isOpen} onClose={() => setOpen(false)} title="Register Site Incident">
+      {/* Register Work Request Modal */}
+      <Modal isOpen={isOpen} onClose={() => setOpen(false)} title="Register Work Request">
         <form onSubmit={submit} style={{ display: "grid", gap: "1.25rem" }}>
+          <Select label="Project *" value={form.project_id}
+            onChange={e => setForm({ ...form, project_id: e.target.value, asset_id: "", location_id: "" })}
+            options={lkOpts(projects, "Select project")} required />
+
+          <Select label="Work Request Type *" value={form.work_type_id}
+            onChange={e => setForm({ ...form, work_type_id: e.target.value })}
+            options={lkOpts(workTypes, "Select work request type")} required />
+
           <div className="glass-panel" style={{ padding: "1rem" }}>
             <strong>Affected Record</strong>
             <p style={{ margin: "0.4rem 0 0.85rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-              Link this incident to one asset or one site location.
+              Link this work request to an asset, a site location, or a broader operational request.
             </p>
             <div style={{ display: "flex", gap: "0.75rem" }}>
               <button type="button" className={target === "asset" ? "btn btn-primary" : "btn btn-secondary"}
@@ -297,10 +357,6 @@ export const IncidentList: React.FC = () => {
               </button>
             </div>
           </div>
-
-          <Select label="Project *" value={form.project_id}
-            onChange={e => setForm({ ...form, project_id: e.target.value, asset_id: "", location_id: "" })}
-            options={lkOpts(projects, "Select project")} required />
 
           {target === "asset" ? (
             <Select label="Affected Asset *" value={form.asset_id}
@@ -324,12 +380,17 @@ export const IncidentList: React.FC = () => {
               options={lkOpts(statuses, "Select status")} required />
           </div>
 
-          <Input label="What happened? *" value={form.description}
+          <Input label="Describe request *" value={form.description}
             onChange={e => setForm({ ...form, description: e.target.value })}
-            placeholder="Describe the issue, risk observed, and immediate action taken" required />
+            placeholder="Describe the request, expected outcome, and any relevant details" required />
+
+
+          <TextArea label="Acceptance Criteria *" value={form.acceptance_criteria}
+            onChange={e => setForm({ ...form, acceptance_criteria: e.target.value })}
+            placeholder="What needs to be achieved for this request to be accepted" required />
 
           <button className="btn btn-primary" disabled={saving}>
-            {saving ? "Registering..." : "Register Incident"}
+            {saving ? "Registering..." : "Register Work Request"}
           </button>
         </form>
       </Modal>

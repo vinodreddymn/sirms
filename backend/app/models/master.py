@@ -4,7 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from uuid import UUID
 from datetime import datetime
 
-from app.db.base import AuditMixin, Base, BigIntPrimaryKeyMixin, MasterLookupMixin
+from app.db.base import AuditMixin, Base, BigIntPrimaryKeyMixin, MasterLookupMixin, UUIDPrimaryKeyMixin
 
 
 class LocationType(MasterLookupMixin, Base):
@@ -246,3 +246,19 @@ class StockTransactionType(BigIntPrimaryKeyMixin, AuditMixin, Base):
     quantity_effect: Mapped[int] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+
+class WorkType(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "work_types"
+    __table_args__ = {"schema": "master"}
+
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class WorkOrderStatus(MasterLookupMixin, Base):
+    __tablename__ = "work_order_status"
+    __table_args__ = {"schema": "master"}

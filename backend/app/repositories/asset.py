@@ -33,6 +33,7 @@ from app.models.master import (
     AssetStatus,
     AssetSubcategory,
     DocumentType,
+    LocationType,
     Manufacturer,
     MovementType,
     RelationshipType,
@@ -52,6 +53,7 @@ class AssetListFilters:
     lifecycle_id: int | None = None
     location_id: UUID | None = None
     warranty_status: str | None = None
+    location_type_code: str | None = None  # e.g. "STORE" to filter by location type
 
 
 class AssetRepository:
@@ -121,6 +123,15 @@ class AssetRepository:
             conditions.append(Asset.asset_lifecycle_id == filters.lifecycle_id)
         if filters.location_id:
             conditions.append(Asset.current_location_id == filters.location_id)
+        if filters.location_type_code:
+            # Only include assets whose current location matches the given location type code
+            loc_type_subq = (
+                select(Location.id)
+                .join(LocationType, LocationType.id == Location.location_type_id)
+                .where(LocationType.code == filters.location_type_code)
+                .scalar_subquery()
+            )
+            conditions.append(Asset.current_location_id.in_(loc_type_subq))
         if filters.warranty_status == "expiring_soon":
             conditions.append(
                 and_(

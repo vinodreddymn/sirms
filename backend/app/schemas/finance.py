@@ -73,6 +73,9 @@ class ExpenseAttachmentResponse(BaseModel):
     id: UUID
     expense_id: UUID
     attachment_id: UUID
+    filename: str | None = None
+    file_name: str | None = None
+    url: str | None = None
     category: str | None = None
     created_at: datetime
     updated_at: datetime | None = None

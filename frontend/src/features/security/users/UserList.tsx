@@ -36,6 +36,8 @@ export const UserList: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState(defaultFormData);
   const [saving, setSaving] = useState(false);
+  const [roles, setRoles] = useState<Array<{ id: string; role_code: string; role_name: string }>>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
 
   const { addToast } = useToast();
 
@@ -52,8 +54,18 @@ export const UserList: React.FC = () => {
     }
   };
 
+  const fetchRoles = async () => {
+    try {
+      const res = await api.get('/roles', { params: { page_size: 200 } });
+      setRoles(res.data.items ?? []);
+    } catch (err) {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchRoles();
   }, []);
 
   const handleOpenModal = (user?: User) => {
@@ -67,9 +79,12 @@ export const UserList: React.FC = () => {
         mobile_number: user.mobile_number || "",
         is_locked: user.is_locked,
       });
+        // set selected role if present on user (take first)
+        setSelectedRoleId((user as any).role_ids && (user as any).role_ids.length ? String((user as any).role_ids[0]) : null);
     } else {
       setEditingId(null);
       setFormData(defaultFormData);
+        setSelectedRoleId(null);
     }
     setIsModalOpen(true);
   };
@@ -100,12 +115,27 @@ export const UserList: React.FC = () => {
       };
 
       if (editingId) {
-        await api.put(`/users/${editingId}`, payload);
+        const res = await api.put(`/users/${editingId}`, payload);
         addToast("success", "User successfully updated.");
+        // handle role change
+        const existingRoleIds: string[] = (res.data.role_ids ?? []).map(String);
+        const newRoleId = selectedRoleId;
+        const prevRoleId = existingRoleIds.length ? String(existingRoleIds[0]) : null;
+        if (prevRoleId && prevRoleId !== newRoleId) {
+          // remove old
+          await api.delete(`/users/${editingId}/roles/${prevRoleId}`);
+        }
+        if (newRoleId && newRoleId !== prevRoleId) {
+          await api.post(`/users/${editingId}/roles`, { role_id: newRoleId });
+        }
       } else {
         payload.username = formData.username;
         payload.password = formData.password;
-        await api.post("/users", payload);
+        const res = await api.post("/users", payload);
+        const newUserId = res.data.id;
+        if (selectedRoleId) {
+          await api.post(`/users/${newUserId}/roles`, { role_id: selectedRoleId });
+        }
         addToast("success", "User successfully created.");
       }
       handleCloseModal();
@@ -121,6 +151,7 @@ export const UserList: React.FC = () => {
   const columns: Column<User>[] = [
     { header: "Username", accessor: "username" },
     { header: "Full Name", accessor: "full_name" },
+    { header: "Role", accessor: (row) => ((row as any).role_codes && (row as any).role_codes.length ? (row as any).role_codes[0] : '—'), width: '150px' },
     { header: "Email", accessor: "email" },
     { 
       header: "Status", 
@@ -262,6 +293,13 @@ export const UserList: React.FC = () => {
             value={formData.mobile_number}
             onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
             placeholder="+1 234 567 8900"
+          />
+
+          <Select
+            label="Role"
+            value={selectedRoleId ?? ""}
+            onChange={(e) => setSelectedRoleId(e.target.value || null)}
+            options={[{ label: "(none)", value: "" }, ...(roles.map(r => ({ label: `${r.role_name} (${r.role_code})`, value: r.id })))]}
           />
 
           {editingId && (

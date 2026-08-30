@@ -13,6 +13,7 @@ from app.models.master import (
     PositionTemplateNode,
     PositionType,
     SpecificationDefinition,
+    WorkType,
 )
 from app.repositories.master import MasterRepository
 
@@ -23,7 +24,7 @@ class MasterService:
 
     async def list_lookups(
         self,
-        model: type[LocationTemplate] | type[PositionTemplate] | type[SpecificationDefinition],
+        model: type[Any],
         offset: int = 0,
         limit: int = 100,
         filters: dict[str, int] | None = None,
@@ -67,6 +68,12 @@ class MasterService:
         if not entity:
             return None
         return await repo.update(entity, values)
+
+    async def list_work_types(self, offset: int = 0, limit: int = 100) -> tuple[list[WorkType], int]:
+        query = select(WorkType).order_by(WorkType.created_at, WorkType.code).offset(offset).limit(limit)
+        items = (await self.session.execute(query)).scalars().all()
+        total = await self.session.scalar(select(func.count()).select_from(WorkType))
+        return items, total or 0
 
     async def list_specification_definitions(
         self,

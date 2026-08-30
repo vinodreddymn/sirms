@@ -86,3 +86,32 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({ label,
 
 Select.displayName = 'Select';
 
+interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string;
+  error?: string;
+}
+
+export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(({ label, error, className = '', ...props }, ref) => {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '8px' }}>
+      {label && (
+        <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+          {label}{props.required && <span style={{ color: 'var(--danger, #f87171)', marginLeft: '2px' }}>*</span>}
+        </label>
+      )}
+      <textarea
+        ref={ref}
+        style={{
+          ...inputStyle,
+          borderColor: error ? 'var(--danger)' : 'var(--border-color)',
+          resize: 'vertical',
+        }}
+        {...props}
+      />
+      {error && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{error}</span>}
+    </div>
+  );
+});
+
+TextArea.displayName = 'TextArea';
+

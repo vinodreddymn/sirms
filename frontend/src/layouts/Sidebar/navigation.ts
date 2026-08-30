@@ -53,26 +53,44 @@ export const navigation: SidebarSection[] = [
 
     {
         id: "assets",
-
         label: "Assets",
-
         icon: Boxes,
-        path: "/assets"
-
-
+        children: [
+            {
+                id: "asset-register",
+                label: "Asset Register",
+                path: "/assets",
+            },
+            {
+                id: "store-area-assets",
+                label: "Store Area Assets",
+                path: "/assets/store-area",
+            }
+        ]
     },
 
     /* ---------------------------------------------------------
-       Incidents
+       Dispatches
     ----------------------------------------------------------*/
 
     {
-        id: "incidents",
+        id: "dispatches",
+        label: "Dispatches",
+        icon: Package,
+        path: "/dispatches"
+    },
 
-        label: "Incidents",
+    /* ---------------------------------------------------------
+       Work Requests
+    ----------------------------------------------------------*/
+
+    {
+        id: "work-requests",
+
+        label: "Work Requests",
 
         icon: AlertTriangle,
-        path: "/incidents"
+        path: "/work-requests"
 
     },
 

@@ -18,7 +18,7 @@ class IncidentRepository:
         if not search or self.model.__name__ != "Incident":
             return None
         pattern = f"%{search.strip()}%"
-        return or_(self.model.incident_number.ilike(pattern), self.model.description.ilike(pattern))
+        return or_(self.model.work_request_number.ilike(pattern), self.model.description.ilike(pattern))
 
     async def list(self, offset: int = 0, limit: int = 100, search: str | None = None) -> list[Any]:
         query = select(self.model)
@@ -38,6 +38,7 @@ class IncidentRepository:
     async def create(self, entity: Any) -> Any:
         self.session.add(entity)
         await self.session.flush()
+        await self.session.refresh(entity)
         return entity
 
     async def update(self, entity: Any, values: dict[str, Any]) -> Any:
@@ -72,3 +73,43 @@ class IncidentAttachmentRepository(IncidentRepository):
         return (await self.session.scalar(
             select(func.count()).select_from(self.model).where(self.model.incident_id == incident_id)
         )) or 0
+
+
+class WorkAssignmentRepository(IncidentRepository):
+    async def list_by_incident(self, incident_id: UUID, offset: int = 0, limit: int = 100) -> list[Any]:
+        result = await self.session.execute(
+            select(self.model).where(self.model.incident_id == incident_id).offset(offset).limit(limit)
+        )
+        return result.scalars().all()
+
+    async def count_by_incident(self, incident_id: UUID) -> int:
+        return (await self.session.scalar(
+            select(func.count()).select_from(self.model).where(self.model.incident_id == incident_id)
+        )) or 0
+
+
+class WorkActionRepository(IncidentRepository):
+    async def list_by_incident(self, incident_id: UUID, offset: int = 0, limit: int = 100) -> list[Any]:
+        result = await self.session.execute(
+            select(self.model).where(self.model.incident_id == incident_id).offset(offset).limit(limit)
+        )
+        return result.scalars().all()
+
+    async def count_by_incident(self, incident_id: UUID) -> int:
+        return (await self.session.scalar(
+            select(func.count()).select_from(self.model).where(self.model.incident_id == incident_id)
+        )) or 0
+
+
+class WorkRelationRepository(IncidentRepository):
+    async def list_by_source(self, source_incident_id: UUID, offset: int = 0, limit: int = 100) -> list[Any]:
+        result = await self.session.execute(
+            select(self.model).where(self.model.source_incident_id == source_incident_id).offset(offset).limit(limit)
+        )
+        return result.scalars().all()
+
+    async def list_by_target(self, target_incident_id: UUID, offset: int = 0, limit: int = 100) -> list[Any]:
+        result = await self.session.execute(
+            select(self.model).where(self.model.target_incident_id == target_incident_id).offset(offset).limit(limit)
+        )
+        return result.scalars().all()

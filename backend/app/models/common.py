@@ -91,9 +91,7 @@ class AuditLog(UUIDPrimaryKeyMixin, AuditMixin, Base):
 class ActivityLog(UUIDPrimaryKeyMixin, AuditMixin, Base):
     __tablename__ = "activity_logs"
     __table_args__ = {"schema": "common"}
-
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("common.projects.id", ondelete="SET NULL", onupdate="RESTRICT"))
-    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id", ondelete="SET NULL", onupdate="RESTRICT"))
     activity_type: Mapped[str] = mapped_column(String(50), nullable=False)
     module_name: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_name: Mapped[str] = mapped_column(String(50), nullable=False)

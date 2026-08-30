@@ -2,8 +2,8 @@ from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.base import MasterLookupMixin
+from app.db.base import MasterLookupMixin
+from app.repositories.base import BaseRepository
 
 
 class MasterRepository:

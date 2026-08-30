@@ -104,3 +104,40 @@ class VendorRead(VendorBase):
     id: UUID
     created_at: datetime
     updated_at: datetime | None = None
+
+
+class ActivityCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    activity_time: datetime | None = None
+    source: str | None = None
+    module: str
+    action: str | None = None
+    title: str
+    description: str | None = None
+    project_id: UUID | None = None
+    location_id: UUID | None = None
+    asset_id: UUID | None = None
+    work_request_id: UUID | None = None
+    dispatch_id: UUID | None = None
+    metadata: dict | None = None
+
+
+class ActivityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    activity_time: datetime
+    source: str | None = None
+    module: str
+    action: str | None = None
+    title: str
+    description: str | None = None
+    project_id: UUID | None = None
+    location_id: UUID | None = None
+    asset_id: UUID | None = None
+    work_request_id: UUID | None = None
+    dispatch_id: UUID | None = None
+    metadata: dict | None = None
+    created_at: datetime
+    created_by: UUID | None = None

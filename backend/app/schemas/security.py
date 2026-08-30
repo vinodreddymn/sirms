@@ -33,6 +33,8 @@ class UserRead(UserBase):
     created_at: datetime
     updated_at: datetime | None = None
     last_login_at: datetime | None = None
+    role_ids: list[UUID] = []
+    role_codes: list[str] = []
 
 
 class RoleBase(BaseModel):

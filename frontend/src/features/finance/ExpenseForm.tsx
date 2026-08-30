@@ -54,13 +54,13 @@ export const ExpenseForm: React.FC<{ mode: 'create' | 'edit' }> = ({ mode }) => 
         amount: Number(form.amount),
       };
       if (mode === 'create') {
-        await expensesApi.create(payload);
+        const response = await expensesApi.create(payload);
         addToast('success', 'Expense created');
-        navigate('/expenses');
+        navigate(`/expenses/${response.data.id}`);
       } else if (id) {
         await expensesApi.update(id, payload);
         addToast('success', 'Expense updated');
-        navigate('/expenses');
+        navigate(`/expenses/${id}`);
       }
     } catch (err: any) {
       addToast('error', err.response?.data?.detail || 'Could not save expense');

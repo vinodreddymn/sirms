@@ -85,6 +85,7 @@ VALUES
 ('abababab-abab-abab-abab-ababababab01', 'ASSET_CAMERA', 'CAM', 1, 6, 'NEVER'),
 ('abababab-abab-abab-abab-ababababab02', 'ASSET_UPS', 'UPS', 20, 6, 'NEVER'),
 ('abababab-abab-abab-abab-ababababab03', 'LOCATION_POLE', 'POL', 855, 6, 'NEVER'),
+('abababab-abab-abab-abab-ababababab06', 'PREVENTIVE_MAINTENANCE', 'PM', 0, 6, 'NEVER'),
 ('abababab-abab-abab-abab-ababababab04', 'INCIDENT', 'INC', 152, 6, 'NEVER'),
 ('abababab-abab-abab-abab-ababababab05', 'WORK_ORDER', 'WO', 74, 6, 'NEVER')
 ON CONFLICT (entity_name) DO NOTHING;

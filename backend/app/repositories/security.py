@@ -43,6 +43,14 @@ class UserRepository:
         )
         return result.scalars().all()
 
+    async def get_role_ids(self, user_id: UUID) -> list[UUID]:
+        result = await self.session.execute(
+            select(Role.id)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == user_id)
+        )
+        return result.scalars().all()
+
     async def get_effective_permissions(self, user_id: UUID) -> list[str]:
         result = await self.session.execute(
             select(Permission.permission_code)

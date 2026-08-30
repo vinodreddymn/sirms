@@ -128,6 +128,7 @@ export interface AssetMaintenanceHistory {
 
 export interface AssetDetails {
   id: string;
+  asset_role?: string;
   basic_information: AssetListItem;
   qr_code?: string | null;
   project: AssetLookupValue;

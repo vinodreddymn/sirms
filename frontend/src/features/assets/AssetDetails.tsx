@@ -79,7 +79,10 @@ export const AssetDetailsPage: React.FC = () => {
   const [spareCandidates, setSpareCandidates] = useState<Array<{ id: string; asset_number: string; serial_number?: string | null; barcode?: string | null; qr_code?: string | null; status: string; current_location?: string | null }>>([]);
   const [replacementReason, setReplacementReason] = useState("");
   const [replacing, setReplacing] = useState(false);
-  const [timeline, setTimeline] = useState<Array<{ id: string; event_type: string; event_at: string; description: string }>>([]);
+  const [timeline, setTimeline] = useState<Array<{ id: string; event_type: string; event_at: string; description: string; metadata_json?: Record<string, any> }>>([]);
+  const [workRequestLabels, setWorkRequestLabels] = useState<Record<string, string>>({});
+  const [dispatchLabels, setDispatchLabels] = useState<Record<string, string>>({});
+  const [locationLabels, setLocationLabels] = useState<Record<string, string>>({});
 
   const [installOpen, setInstallOpen] = useState(false);
   const [installLocationId, setInstallLocationId] = useState<string | null>(null);
@@ -130,7 +133,7 @@ export const AssetDetailsPage: React.FC = () => {
     try {
       const response = await api.get<AssetDetails>(`/assets/${id}`);
       setAsset(response.data);
-      const timelineResponse = await api.get<Array<{ id: string; event_type: string; event_at: string; description: string }>>(`/assets/${id}/timeline`);
+      const timelineResponse = await api.get<Array<{ id: string; event_type: string; event_at: string; description: string; metadata_json?: Record<string, any> }>>(`/assets/${id}/timeline`);
       setTimeline(timelineResponse.data);
     } catch {
       addToast("error", "Failed to load asset details.");
@@ -143,6 +146,165 @@ export const AssetDetailsPage: React.FC = () => {
   useEffect(() => {
     void loadAsset();
   }, [id]);
+
+  useEffect(() => {
+    if (!timeline.length) return;
+
+    const workRequestIds = new Set<string>();
+    const dispatchIds = new Set<string>();
+    const locationIds = new Set<string>();
+
+    const extractUuidGroup = (text: string, regex: RegExp): string[] => {
+      const matches = [...text.matchAll(regex)];
+      return matches.map((match) => match[1]).filter(Boolean);
+    };
+
+    timeline.forEach((event) => {
+      const meta = event.metadata_json || {};
+      if (meta.work_request_id && !workRequestLabels[meta.work_request_id]) {
+        workRequestIds.add(String(meta.work_request_id));
+      }
+      if (meta.dispatch_id && !dispatchLabels[meta.dispatch_id]) {
+        dispatchIds.add(String(meta.dispatch_id));
+      }
+      if (meta.from_location_id && !locationLabels[meta.from_location_id]) {
+        locationIds.add(String(meta.from_location_id));
+      }
+      if (meta.to_location_id && !locationLabels[meta.to_location_id]) {
+        locationIds.add(String(meta.to_location_id));
+      }
+
+      const wrMatches = extractUuidGroup(event.description, /WR\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi);
+      wrMatches.forEach((value) => {
+        if (!workRequestLabels[value]) {
+          workRequestIds.add(value);
+        }
+      });
+
+      const dispatchMatches = extractUuidGroup(event.description, /Dispatch\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi);
+      dispatchMatches.forEach((value) => {
+        if (!dispatchLabels[value]) {
+          dispatchIds.add(value);
+        }
+      });
+
+      const locationMatches = extractUuidGroup(event.description, /location\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi);
+      locationMatches.forEach((value) => {
+        if (!locationLabels[value]) {
+          locationIds.add(value);
+        }
+      });
+    });
+
+    if (!workRequestIds.size && !dispatchIds.size && !locationIds.size) return;
+
+    const loadTimelineLabels = async () => {
+      if (workRequestIds.size) {
+        const entries = await Promise.all(
+          [...workRequestIds].map(async (workRequestId) => {
+            try {
+              const response = await api.get<{ incident_number: string }>(`/work-requests/${workRequestId}`);
+              return [workRequestId, response.data.incident_number] as const;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        setWorkRequestLabels((current) => ({
+          ...current,
+          ...Object.fromEntries(entries.filter(Boolean) as [string, string][]),
+        }));
+      }
+
+      if (dispatchIds.size) {
+        const entries = await Promise.all(
+          [...dispatchIds].map(async (dispatchId) => {
+            try {
+              const response = await api.get<{ dispatch_no: string }>(`/dispatches/${dispatchId}`);
+              return [dispatchId, response.data.dispatch_no] as const;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        setDispatchLabels((current) => ({
+          ...current,
+          ...Object.fromEntries(entries.filter(Boolean) as [string, string][]),
+        }));
+      }
+
+      if (locationIds.size) {
+        const entries = await Promise.all(
+          [...locationIds].map(async (locationId) => {
+            try {
+              const response = await api.get<{ name: string }>(`/infrastructure/locations/${locationId}`);
+              return [locationId, response.data.name] as const;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        setLocationLabels((current) => ({
+          ...current,
+          ...Object.fromEntries(entries.filter(Boolean) as [string, string][]),
+        }));
+      }
+    };
+
+    void loadTimelineLabels();
+  }, [timeline, workRequestLabels, dispatchLabels, locationLabels]);
+
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      try {
+        // event detail contains the fresh asset payload
+        // @ts-ignore
+        const detail = (e as CustomEvent).detail;
+        if (!detail || detail.id !== id) return;
+        // Reload authoritative asset and timeline from API
+        await loadAsset();
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('asset-updated', handler as EventListener);
+    return () => window.removeEventListener('asset-updated', handler as EventListener);
+  }, [id]);
+
+  const formatTimelineDescription = (event: { description: string; metadata_json?: Record<string, any> }) => {
+    let description = event.description;
+    const meta = event.metadata_json || {};
+
+    if (meta.work_request_id && workRequestLabels[meta.work_request_id]) {
+      description = description.replaceAll(String(meta.work_request_id), workRequestLabels[meta.work_request_id]);
+    }
+    if (meta.dispatch_id && dispatchLabels[meta.dispatch_id]) {
+      description = description.replaceAll(String(meta.dispatch_id), dispatchLabels[meta.dispatch_id]);
+    }
+    if (meta.from_location_id && locationLabels[meta.from_location_id]) {
+      description = description.replaceAll(String(meta.from_location_id), locationLabels[meta.from_location_id]);
+    }
+    if (meta.to_location_id && locationLabels[meta.to_location_id]) {
+      description = description.replaceAll(String(meta.to_location_id), locationLabels[meta.to_location_id]);
+    }
+
+    return description;
+  };
+
+  const formatTextWithLabels = (text: string) => {
+    if (!text) return text;
+    let out = String(text);
+    Object.entries(workRequestLabels).forEach(([k, v]) => {
+      out = out.replaceAll(k, v);
+    });
+    Object.entries(dispatchLabels).forEach(([k, v]) => {
+      out = out.replaceAll(k, v);
+    });
+    Object.entries(locationLabels).forEach(([k, v]) => {
+      out = out.replaceAll(k, v);
+    });
+    return out;
+  };
 
   useEffect(() => {
     if (!installLocationId) {
@@ -321,7 +483,34 @@ export const AssetDetailsPage: React.FC = () => {
   if (!asset) return null;
 
   const basic = asset.basic_information;
-  const incidentContext = new URLSearchParams(location.search).has("incident");
+  const incidentContext = new URLSearchParams(location.search).has("incident") || new URLSearchParams(location.search).has("work-request");
+  const repairStatus = asset.status.code === "UNDER_REPAIR";
+  const dispatchMovement = asset.movement_history.find((item) => {
+    const remarks = item.remarks?.toLowerCase() ?? "";
+    const type = item.movement_type?.toLowerCase() ?? "";
+    // Only consider outbound repair/dispatch movements (no to_location) as the active dispatch
+    const isRepairOrDispatch = type.includes("repair") || type.includes("dispatch") || remarks.includes("dispatched") || remarks.includes("repair");
+    const isOutbound = !item.to_location; // to_location is null for dispatched items leaving the tracked locations
+    return isRepairOrDispatch && isOutbound;
+  });
+  const dispatchVendorName = dispatchMovement?.vendor || "repair vendor";
+  const currentLocationLabel = repairStatus
+    ? `${formatTextWithLabels(basic.current_location || "-")} (Dispatched to ${dispatchVendorName})`
+    : formatTextWithLabels(basic.current_location || "-");
+  const positionAssignmentLabel = repairStatus
+    ? `Dispatched to ${dispatchVendorName}`
+    : asset.installation?.position_name
+    ? `${formatTextWithLabels(asset.installation.position_name)}${asset.installation.current_flag ? "" : " (Historical / Uninstalled)"}`
+    : "-";
+  const deploymentStatusLabel = repairStatus
+    ? `${asset.status.name} (Dispatched)`
+    : asset.installation?.installation_status
+    ? formatTextWithLabels(asset.installation.installation_status || "")
+    : asset.installation?.current_flag === true
+    ? "INSTALLED"
+    : asset.installation?.current_flag === false
+    ? "UNINSTALLED"
+    : "-";
   const tabContentStyle: React.CSSProperties = { display: "grid", gap: "1.5rem" };
   const twoColumnStyle: React.CSSProperties = {
     display: "grid",
@@ -356,7 +545,7 @@ export const AssetDetailsPage: React.FC = () => {
       content: (
         <div style={tabContentStyle}>
           <Section title="Basic Information">
-            {incidentContext && <p style={{ marginTop: 0, color: "var(--text-secondary)" }}>This asset was opened from an incident. Direct editing is disabled; use a controlled operational action and record the result in the incident.</p>}
+            {incidentContext && <p style={{ marginTop: 0, color: "var(--text-secondary)" }}>This asset was opened from a work request. Direct editing is disabled; use a controlled operational action and record the result in the work request.</p>}
             <DetailGrid
               items={[
                 { label: "Project", value: asset.project.name },
@@ -378,6 +567,7 @@ export const AssetDetailsPage: React.FC = () => {
             </p>
             <DetailGrid
               items={[
+                { label: "Asset Role", value: asset.asset_role || "SPARE" },
                 { label: "Operational Status", value: asset.status.name },
                 { label: "Condition", value: asset.condition?.name ?? "-" },
                 { label: "Lifecycle Stage", value: asset.lifecycle?.name ?? "-" },
@@ -387,27 +577,21 @@ export const AssetDetailsPage: React.FC = () => {
             />
           </Section>
 
-          <Section title="Installation Information">
+          <Section title="Location & Deployment">
             <DetailGrid
               items={[
-                { label: "Current Location", value: basic.current_location || "-" },
-                {
-                  label: "Installation Position",
-                  value: asset.installation?.position_name
-                    ? `${asset.installation.position_name}${asset.installation.current_flag ? "" : " (Historical / Uninstalled)"}`
-                    : "-",
-                },
-                {
-                  label: "Installation Status",
-                  value: asset.installation?.installation_status
-                    ? asset.installation.installation_status
-                    : asset.installation?.current_flag
-                    ? "INSTALLED"
-                    : "UNINSTALLED",
-                },
-                { label: "Installation Date", value: formatDate(asset.installation?.installed_on) },
+                { label: "Current Location", value: currentLocationLabel },
+                { label: "Position / Assignment", value: positionAssignmentLabel },
+                { label: "Deployment Status", value: deploymentStatusLabel },
+                { label: "Installed On", value: formatDate(asset.installation?.installed_on) },
                 { label: "Removed On", value: formatDate(asset.installation?.removed_on) },
-                { label: "Installation Remarks", value: asset.installation?.remarks ?? "-" },
+                ...(repairStatus ? [
+                  { label: "Repair Vendor", value: dispatchMovement?.vendor || "-" },
+                  { label: "Dispatch Date", value: formatDate(dispatchMovement?.moved_at) },
+                  { label: "Dispatch Notes", value: formatTextWithLabels(dispatchMovement?.remarks || "-") },
+                ] : [
+                  { label: "Remarks", value: asset.installation?.remarks ?? "-" },
+                ]),
               ]}
             />
             {(asset.installation?.power_source || asset.installation?.electrical_panel || asset.installation?.network_switch || asset.installation?.switch_port || asset.installation?.patch_panel || asset.installation?.junction_box || asset.installation?.mounting_details) && (
@@ -503,7 +687,7 @@ export const AssetDetailsPage: React.FC = () => {
                 {timeline.map((event) => (
                   <div key={event.id} style={{ borderLeft: "3px solid var(--accent-primary)", paddingLeft: "0.8rem" }}>
                     <strong>{event.event_type.replaceAll("_", " ")}</strong>
-                    <div>{event.description}</div>
+                    <div>{formatTimelineDescription(event)}</div>
                     <small style={{ color: "var(--text-secondary)" }}>{formatDate(event.event_at)}</small>
                   </div>
                 ))}
@@ -630,7 +814,7 @@ export const AssetDetailsPage: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
           <button className="btn btn-secondary" onClick={() => void loadAsset()}>
             <RefreshCw size={16} />
             Refresh
@@ -641,17 +825,22 @@ export const AssetDetailsPage: React.FC = () => {
               Edit Asset
             </button>
           )}
-          {asset.installation?.current_flag ? (
-            <>
-              <button className="btn btn-secondary" onClick={() => setUninstallOpen(true)}>Uninstall</button>
-              <button className="btn btn-secondary" onClick={() => setReplacementOpen(true)}>Replace Asset</button>
-            </>
-          ) : (
-            <>
-              <button className="btn btn-secondary" onClick={() => setInstallOpen(true)}>Install</button>
-              <button className="btn btn-secondary" onClick={() => setMoveOpen(true)}>Move Location</button>
-            </>
-          )}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            padding: "0.5rem 0.75rem",
+            background: "rgba(255, 255, 255, 0.05)",
+            border: "1px solid var(--border-color)",
+            borderRadius: "var(--border-radius-md)",
+            fontSize: "0.85rem",
+            color: "var(--text-secondary)"
+          }}>
+            <span>Installations, uninstallations, and movements must be performed through a Work Request.</span>
+            <button className="btn btn-primary" onClick={() => navigate("/work-requests")} style={{ padding: "0.25rem 0.5rem", fontSize: "0.8rem", height: "auto" }}>
+              Work Requests
+            </button>
+          </div>
         </div>
       </div>
 

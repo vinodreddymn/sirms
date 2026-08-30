@@ -137,3 +137,31 @@ class PositionTemplateRead(PositionTemplateBase):
     updated_at: datetime | None = None
     nodes: List[PositionTemplateNodeRead] = []
     node_count: int = 0
+
+
+# ─── Work Type Schemas ────────────────────────────────────────────────────────
+
+class WorkTypeBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    description: str | None = None
+    is_active: bool = True
+
+
+class WorkTypeCreate(WorkTypeBase):
+    pass
+
+
+class WorkTypeUpdate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class WorkTypeRead(WorkTypeBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime | None = None

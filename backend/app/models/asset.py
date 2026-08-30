@@ -4,9 +4,10 @@ from uuid import UUID
 
 from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import AuditMixin, Base, UUIDPrimaryKeyMixin
+from app.models.master import AssetCategory, AssetSubcategory
 
 
 class Asset(UUIDPrimaryKeyMixin, AuditMixin, Base):
@@ -24,10 +25,11 @@ class Asset(UUIDPrimaryKeyMixin, AuditMixin, Base):
         ForeignKey("master.asset_categories.id", ondelete="RESTRICT", onupdate="RESTRICT"),
         nullable=False,
     )
-
     asset_subcategory_id: Mapped[int | None] = mapped_column(
         ForeignKey("master.asset_subcategories.id", ondelete="SET NULL", onupdate="RESTRICT")
     )
+    asset_category: Mapped[AssetCategory] = relationship("AssetCategory", lazy="joined")
+    asset_subcategory: Mapped[AssetSubcategory | None] = relationship("AssetSubcategory", lazy="joined")
 
     manufacturer_id: Mapped[int | None] = mapped_column(
         ForeignKey("master.manufacturers.id", ondelete="SET NULL", onupdate="RESTRICT")
@@ -110,7 +112,7 @@ class AssetTimelineEvent(UUIDPrimaryKeyMixin, Base):
     event_type: Mapped[str] = mapped_column(String(40), nullable=False)
     event_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'"))
     created_by: Mapped[UUID | None] = mapped_column(ForeignKey("security.users.id"))
 
 

@@ -28,7 +28,7 @@ from app.models.security import User
 # Test database configuration
 settings = get_settings()
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-TEST_SCHEMAS = ("master", "security", "common", "infrastructure", "asset", "incident")
+TEST_SCHEMAS = ("master", "security", "common", "infrastructure", "asset", "incident", "inventory", "finance")
 
 
 @compiles(JSONB, "sqlite")
@@ -56,6 +56,7 @@ async def test_engine():
     @event.listens_for(engine.sync_engine, "connect")
     def register_sqlite_functions(dbapi_connection, connection_record):
         dbapi_connection.create_function("gen_random_uuid", 0, lambda: str(uuid4()))
+        dbapi_connection.create_function("common.get_next_sequence", 1, lambda name: 1)
     
     # Create tables
     async with engine.begin() as conn:

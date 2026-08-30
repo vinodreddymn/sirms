@@ -31,8 +31,8 @@ export const Dashboard: React.FC = () => {
           <StatusRow label="Critical" value="11" color="var(--danger)" />
         </Panel>
 
-        {/* Incidents */}
-        <Panel title="Incidents">
+        {/* Work Requests */}
+        <Panel title="Work Requests">
           <StatusRow label="Open" value="24" color="var(--danger)" />
           <StatusRow label="Assigned" value="18" color="var(--warning)" />
           <StatusRow label="Resolved Today" value="7" color="var(--success)" />
@@ -70,7 +70,7 @@ export const Dashboard: React.FC = () => {
             <tbody>
               {[
                 { time: '20:12', event: 'Asset CAM-045 moved to Location VR 1-1', user: 'Admin' },
-                { time: '19:58', event: 'Incident INC-0024 assigned to Engineer', user: 'Supervisor' },
+                { time: '19:58', event: 'Work Request WR-0024 assigned to Engineer', user: 'Supervisor' },
                 { time: '19:34', event: 'PM completed for Server RACK-A1', user: 'Technician' },
                 { time: '18:55', event: 'New asset CAM-046 registered', user: 'Admin' },
               ].map((row, i) => (

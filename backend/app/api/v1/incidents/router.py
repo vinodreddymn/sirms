@@ -79,7 +79,8 @@ async def apply_incident_asset_action(
     db: AsyncSession = Depends(get_db),
 ) -> IncidentRead:
     try:
-        await IncidentService(db).apply_asset_action(incident_id, payload.model_dump(), current_user.id)
+        from app.services.asset_service import AssetService
+        await AssetService(db).apply_asset_action(incident_id, payload.model_dump(), current_user.id)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     incident = await IncidentService(db).get_incident(incident_id)

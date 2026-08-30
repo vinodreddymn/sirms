@@ -52,7 +52,9 @@ export const ExpenseDetails: React.FC = () => {
   const [attachments, setAttachments] = useState<Array<{ id: string; name: string; url: string }>>([]);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerBlobUrl, setViewerBlobUrl] = useState<string | null>(null);
   const [viewerIsImage, setViewerIsImage] = useState(false);
+  const [viewerLoading, setViewerLoading] = useState(false);
 
   const resolveLookupLabel = (lookup?: Lookup) =>
     lookup?.name ?? lookup?.project_name ?? lookup?.project_code ?? undefined;
@@ -74,7 +76,7 @@ export const ExpenseDetails: React.FC = () => {
         {
           id: uploadResponse.data.id,
           name: uploadResponse.data.filename,
-          url: uploadResponse.data.url,
+          url: resolveBackendUrl(uploadResponse.data.url),
         },
       ]);
       addToast('success', 'Document attached to expense');
@@ -105,21 +107,92 @@ export const ExpenseDetails: React.FC = () => {
     return !!(payload && payload.is_admin);
   };
 
-  const handleView = (attachment: { id: string; name: string; url: string }) => {
-    const url = attachment.url;
+  const getBackendOrigin = () => {
+    const base = api.defaults.baseURL ?? window.location.origin;
+    try {
+      return new URL(base).origin;
+    } catch {
+      return window.location.origin;
+    }
+  };
+
+  const resolveBackendUrl = (url: string) => {
+    if (!url) return url;
+    const normalized = url.trim();
+    if (normalized.startsWith('blob:')) return normalized;
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+      return normalized;
+    }
+    const origin = getBackendOrigin();
+    if (normalized.startsWith('//')) {
+      return `${window.location.protocol}${normalized}`;
+    }
+    if (normalized.startsWith('/')) {
+      return `${origin}${normalized}`;
+    }
+    if (normalized.startsWith('api/v1')) {
+      return `${origin}/${normalized}`;
+    }
+    return `${origin}/${normalized}`;
+  };
+
+  const handleView = async (attachment: { id: string; name: string; url: string }) => {
     const isImage = /\.(png|jpe?g|gif|bmp|webp)(\?|$)/i.test(attachment.name) || /^image\//i.test(attachment.name);
     setViewerIsImage(isImage);
-    setViewerUrl(url);
     setViewerOpen(true);
+    setViewerLoading(true);
+    try {
+      if (viewerBlobUrl) {
+        try {
+          URL.revokeObjectURL(viewerBlobUrl);
+        } catch {
+          // ignore
+        }
+        setViewerBlobUrl(null);
+      }
+
+      const fileUrl = resolveBackendUrl(attachment.url);
+      const token = localStorage.getItem('access_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const resp = await fetch(fileUrl, {
+        method: 'GET',
+        headers,
+      });
+      if (!resp.ok) {
+        const message = await resp.text();
+        throw new Error(message || 'Could not load document');
+      }
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      setViewerUrl(blobUrl);
+      setViewerBlobUrl(blobUrl);
+    } catch (err: any) {
+      addToast('error', err.message || 'Could not load document');
+      setViewerOpen(false);
+    } finally {
+      setViewerLoading(false);
+    }
   };
 
   const handleCloseViewer = () => {
     setViewerOpen(false);
     setViewerUrl(null);
+    if (viewerBlobUrl) {
+      try {
+        URL.revokeObjectURL(viewerBlobUrl);
+      } catch {
+        // ignore
+      }
+      setViewerBlobUrl(null);
+    }
   };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!attachmentId) return;
+    if (!window.confirm('Delete this document? This action cannot be undone.')) return;
     try {
       await expensesApi.deleteAttachment(attachmentId);
       setAttachments((current) => current.filter((a) => a.id !== attachmentId));
@@ -151,8 +224,8 @@ export const ExpenseDetails: React.FC = () => {
         setAttachments(
           (attachmentsResponse.data.items || []).map((attachment: any) => ({
             id: attachment.id,
-            name: attachment.filename ?? attachment.attachment_id,
-            url: attachment.url ?? `/api/v1/uploads/${attachment.attachment_id}/download`,
+            name: attachment.filename ?? attachment.file_name ?? attachment.attachment_id,
+            url: resolveBackendUrl(attachment.url ?? `/api/v1/uploads/${attachment.attachment_id}/download`),
           })),
         );
 
@@ -325,16 +398,22 @@ export const ExpenseDetails: React.FC = () => {
           <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>No documents attached yet.</p>
         )}
       </section>
-      {viewerOpen && viewerUrl && (
+      {viewerOpen && (
         <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={handleCloseViewer}>
           <div className="modal-content" style={{ background: 'white', maxWidth: '90%', maxHeight: '90%', width: viewerIsImage ? 'auto' : '80%', height: viewerIsImage ? 'auto' : '90%', padding: '0.5rem', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
             <button onClick={handleCloseViewer} style={{ position: 'absolute', right: 8, top: 8 }} className="btn btn-secondary">Close</button>
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {viewerIsImage ? (
-                // eslint-disable-next-line jsx-a11y/img-redundant-alt
-                <img src={viewerUrl} alt={viewerUrl ?? 'document'} style={{ maxWidth: '100%', maxHeight: '80vh' }} />
+              {viewerLoading ? (
+                <div>Loading document...</div>
+              ) : viewerUrl ? (
+                viewerIsImage ? (
+                  // eslint-disable-next-line jsx-a11y/img-redundant-alt
+                  <img src={viewerUrl} alt={viewerUrl ?? 'document'} style={{ maxWidth: '100%', maxHeight: '80vh' }} />
+                ) : (
+                  <iframe src={viewerUrl ?? ''} title="Document Viewer" style={{ width: '100%', height: '80vh', border: 'none' }} />
+                )
               ) : (
-                <iframe src={viewerUrl ?? ''} title="Document Viewer" style={{ width: '100%', height: '80vh', border: 'none' }} />
+                <div>Unable to load document</div>
               )}
             </div>
           </div>

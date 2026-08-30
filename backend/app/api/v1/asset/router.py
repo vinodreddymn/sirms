@@ -68,6 +68,7 @@ class AssetQueryFilters:
     lifecycle_id: int | None = None
     location_id: UUID | None = None
     warranty_status: str | None = None
+    location_type_code: str | None = None
 
 
 def asset_query_filters(
@@ -81,6 +82,7 @@ def asset_query_filters(
     lifecycle_id: int | None = None,
     location_id: UUID | None = None,
     warranty_status: str | None = Query(default=None, pattern="^(active|expired|expiring_soon)$"),
+    location_type_code: str | None = None,
 ) -> AssetQueryFilters:
     return AssetQueryFilters(
         project_id=project_id,
@@ -93,6 +95,7 @@ def asset_query_filters(
         lifecycle_id=lifecycle_id,
         location_id=location_id,
         warranty_status=warranty_status,
+        location_type_code=location_type_code,
     )
 
 
@@ -108,6 +111,7 @@ def _to_repo_filters(filters: AssetQueryFilters) -> AssetListFilters:
         lifecycle_id=filters.lifecycle_id,
         location_id=filters.location_id,
         warranty_status=filters.warranty_status,
+        location_type_code=filters.location_type_code,
     )
 
 
@@ -337,7 +341,10 @@ async def list_asset_installations(
 @router.post("/{asset_id}/installations", response_model=AssetInstallationRead)
 async def create_asset_installation(asset_id: UUID, payload: AssetInstallationCreate, db: AsyncSession = Depends(get_db)) -> AssetInstallationRead:
     service = AssetService(db)
-    installation = await service.create_asset_installation(asset_id, payload.model_dump())
+    try:
+        installation = await service.create_asset_installation(asset_id, payload.model_dump())
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     return AssetInstallationRead.model_validate(installation)
 
 
@@ -355,7 +362,10 @@ async def list_asset_movements(
 @router.post("/{asset_id}/movements", response_model=AssetMovementRead)
 async def create_asset_movement(asset_id: UUID, payload: AssetMovementCreate, db: AsyncSession = Depends(get_db)) -> AssetMovementRead:
     service = AssetService(db)
-    movement = await service.create_asset_movement(asset_id, payload.model_dump())
+    try:
+        movement = await service.create_asset_movement(asset_id, payload.model_dump())
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     return AssetMovementRead.model_validate(movement)
 
 

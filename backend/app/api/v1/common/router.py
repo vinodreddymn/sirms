@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import PaginatedResponse, PaginationParams, pagination_params
@@ -16,8 +17,13 @@ from app.schemas.common import (
     VendorCreate,
     VendorRead,
     VendorUpdate,
+    ActivityCreate,
+    ActivityRead,
 )
 from app.services.common_service import CommonService
+from app.services.activity_service import ActivityService
+from app.dependencies.auth import get_current_active_user
+from app.models.common import ActivityLog
 
 router = APIRouter(prefix="/common", tags=["Common"])
 
@@ -131,3 +137,95 @@ async def update_vendor(vendor_id: UUID, payload: VendorUpdate, db: AsyncSession
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
     return VendorRead.from_orm(vendor)
+
+
+@router.get("/locations")
+async def list_common_locations(
+    type: str | None = None,
+    db: AsyncSession = Depends(get_db)
+):
+    from app.models.infrastructure import Location
+    from app.models.master import LocationType
+    
+    query = select(Location)
+    if type:
+        query = query.join(LocationType, LocationType.id == Location.location_type_id).where(LocationType.code == type)
+    
+    result = await db.execute(query)
+    locations = result.scalars().all()
+    return {"items": [{"id": str(loc.id), "name": loc.name} for loc in locations]}
+
+
+@router.get("/activities", response_model=PaginatedResponse[ActivityRead])
+async def list_activities(
+    params: PaginationParams = Depends(pagination_params),
+    module: str | None = None,
+    project_id: UUID | None = None,
+    asset_id: UUID | None = None,
+    user_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> PaginatedResponse[ActivityRead]:
+    service = ActivityService(db)
+    filters = {}
+    if module: filters["module"] = module
+    if project_id: filters["project_id"] = project_id
+    if asset_id: filters["asset_id"] = asset_id
+    if user_id: filters["user_id"] = user_id
+    items, total = await service.list_activities(offset=params.offset, limit=params.page_size, filters=filters)
+    # map to schema dicts
+    def to_read(i: ActivityLog):
+        return ActivityRead(
+            id=i.id,
+            activity_time=i.activity_at,
+            source=(i.activity_details or {}).get("source"),
+            module=i.module_name,
+            action=i.activity_type,
+            title=(i.activity_details or {}).get("title") or "",
+            description=(i.activity_details or {}).get("description"),
+            project_id=i.project_id,
+            location_id=None,
+            asset_id=(i.activity_details or {}).get("asset_id"),
+            work_request_id=(i.activity_details or {}).get("work_request_id"),
+            dispatch_id=(i.activity_details or {}).get("dispatch_id"),
+            metadata=(i.activity_details or {}).get("metadata"),
+            created_at=i.created_at,
+            created_by=i.user_id,
+        )
+    return PaginatedResponse.create([to_read(it) for it in items], total, params)
+
+
+@router.post("/activities", response_model=ActivityRead)
+async def create_activity(payload: ActivityCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_active_user)) -> ActivityRead:
+    service = ActivityService(db)
+    entry = await service.log_activity(
+        source=payload.source,
+        module=payload.module,
+        action=payload.action,
+        title=payload.title,
+        description=payload.description,
+        project_id=payload.project_id,
+        location_id=payload.location_id,
+        asset_id=payload.asset_id,
+        work_request_id=payload.work_request_id,
+        dispatch_id=payload.dispatch_id,
+        metadata=payload.metadata,
+        performed_by=current_user.id,
+    )
+    return ActivityRead(
+        id=entry.id,
+        activity_time=entry.activity_at,
+        source=(entry.activity_details or {}).get("source"),
+        module=entry.module_name,
+        action=entry.activity_type,
+        title=(entry.activity_details or {}).get("title") or "",
+        description=(entry.activity_details or {}).get("description"),
+        project_id=entry.project_id,
+        location_id=None,
+        asset_id=(entry.activity_details or {}).get("asset_id"),
+        work_request_id=(entry.activity_details or {}).get("work_request_id"),
+        dispatch_id=(entry.activity_details or {}).get("dispatch_id"),
+        metadata=(entry.activity_details or {}).get("metadata"),
+        created_at=entry.created_at,
+        created_by=entry.user_id,
+    )
+

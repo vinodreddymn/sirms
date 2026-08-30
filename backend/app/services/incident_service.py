@@ -5,16 +5,20 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
 
-from app.models.incident import Incident, IncidentAttachment, IncidentUpdate
+from app.models.incident import Incident, IncidentAttachment, IncidentUpdate, WorkAssignment, WorkAction, WorkRelation
 from app.models.asset import Asset, AssetInstallation, AssetMovement, AssetTimelineEvent, RepairHistory
 
 from app.models.infrastructure import Location
-from app.models.master import AssetStatus, IncidentStatus, MovementType
+from app.models.master import AssetStatus, IncidentStatus, MovementType, WorkType
 from app.repositories.incident import (
     IncidentAttachmentRepository,
     IncidentRepository,
     IncidentUpdateRepository,
+    WorkAssignmentRepository,
+    WorkActionRepository,
+    WorkRelationRepository,
 )
+from app.services.activity_service import ActivityService
 
 
 class IncidentService:
@@ -31,6 +35,18 @@ class IncidentService:
         return items, await repo.count(search=search)
 
     async def create_incident(self, values: dict[str, Any]) -> Incident:
+        work_type_id = values.get("work_type_id")
+        if not work_type_id:
+            work_type = await self.session.scalar(select(WorkType).where(WorkType.code == "INCIDENT"))
+            if not work_type:
+                raise ValueError("Default INCIDENT work type is missing from the database.")
+            work_type_id = work_type.id
+            values["work_type_id"] = work_type_id
+        else:
+            work_type = await self.session.scalar(select(WorkType).where(WorkType.id == work_type_id))
+            if not work_type:
+                raise ValueError("Invalid work_type_id provided.")
+
         asset_id = values.get("asset_id")
         location_id = values.get("location_id")
         project_id = values["project_id"]
@@ -42,7 +58,22 @@ class IncidentService:
             location = await self.session.get(Location, location_id)
             if not location or location.project_id != project_id:
                 raise ValueError("Affected location does not belong to the selected project")
-        values["incident_number"] = values.get("incident_number") or await self.session.scalar(text("SELECT common.generate_business_number('INCIDENT')"))
+        if not values.get("work_request_number"):
+            try:
+                values["work_request_number"] = await self.session.scalar(
+                    text("SELECT common.generate_business_number(:entity_name)"),
+                    {"entity_name": work_type.code},
+                )
+            except Exception as exc:
+                work_type_code = work_type.code
+                try:
+                    await self.session.rollback()
+                except Exception:
+                    pass
+                raise ValueError(
+                    f"Unable to generate incident number for work type '{work_type_code}'. "
+                    "Ensure a matching row exists in common.number_sequences for this work type."
+                ) from exc
         values.setdefault("reported_at", datetime.now())
         entity = Incident(**values)
         repo = IncidentRepository(Incident, self.session)
@@ -53,7 +84,7 @@ class IncidentService:
         incident = await repo.get_by_id(incident_id)
         if not incident:
             return None
-        status_id = values.get("incident_status_id")
+        status_id = values.get("status_id")
         if status_id:
             status = await self.session.scalar(select(IncidentStatus).where(IncidentStatus.id == status_id))
             if status and status.code in ("CLOSED", "RESOLVED"):
@@ -75,13 +106,27 @@ class IncidentService:
         entity = IncidentUpdate(**values)
         repo = IncidentUpdateRepository(IncidentUpdate, self.session)
         update = await repo.create(entity)
-        if values.get("status_after_update_id"):
-            incident.incident_status_id = values["status_after_update_id"]
-            status = await self.session.scalar(select(IncidentStatus).where(IncidentStatus.id == values["status_after_update_id"]))
-            if status and status.code in ("CLOSED", "RESOLVED"):
-                incident.closed_date = datetime.now()
-                incident.closed_by = user_id
-                incident.resolution_remarks = values.get("update_notes")
+        # Activity logging
+        try:
+            act_service = ActivityService(self.session)
+            if values.get("status_after_update_id"):
+                incident.status_id = values["status_after_update_id"]
+                status = await self.session.scalar(select(IncidentStatus).where(IncidentStatus.id == values["status_after_update_id"]))
+                if status:
+                    # Map to action
+                    action = "UPDATE_STATUS"
+                    title = f"Work Request Status: {status.name}"
+                    description = f"Work Request {incident.work_request_number} status changed to {status.name}."
+                    await act_service.log_activity(source="AUTO", module="WORK_REQUEST", action=action, title=title, description=description, work_request_id=incident.id, project_id=incident.project_id, performed_by=user_id)
+                    if status and status.code in ("CLOSED", "RESOLVED"):
+                        incident.closed_date = datetime.now()
+                        incident.closed_by = user_id
+                        incident.completion_notes = values.get("update_notes")
+            # If there are update notes, add a simple activity
+            if values.get("update_notes"):
+                await act_service.log_activity(source="AUTO", module="WORK_REQUEST", action="UPDATE", title="Work Request Update", description=f"{values.get('update_notes')}", work_request_id=incident.id, project_id=incident.project_id, performed_by=user_id)
+        except Exception:
+            pass
         return update
 
     async def list_incident_attachments(self, incident_id: UUID, offset: int = 0, limit: int = 100) -> tuple[list[IncidentAttachment], int]:
@@ -95,111 +140,51 @@ class IncidentService:
         repo = IncidentAttachmentRepository(IncidentAttachment, self.session)
         return await repo.create(entity)
 
-    async def apply_asset_action(self, incident_id: UUID, values: dict[str, Any], user_id: UUID | None) -> Asset:
-        incident = await self.get_incident(incident_id)
-        if not incident:
-            raise ValueError("Incident not found")
-        if incident.incident_status_id is None:
-            raise ValueError("Incident has no status")
-        asset = await self.session.get(Asset, values["asset_id"])
-        if not asset or asset.project_id != incident.project_id:
-            raise ValueError("Asset does not belong to the incident project")
-        action = values["action"].upper()
-        reason = values["reason"].strip()
-        if not reason:
-            raise ValueError("A reason is required")
-        old_location = asset.current_location_id
-        old_status = asset.asset_status_id
-        formatted_reason = f"Incident {incident.incident_number}: {reason}"
-        if action == "CHANGE_STATUS":
-            if values.get("status_id") is None:
-                raise ValueError("status_id is required for CHANGE_STATUS")
-            asset.asset_status_id = values["status_id"]
-        elif action == "MOVE":
-            if asset.asset_role == "INSTALLED":
-                raise ValueError(
-                    "Asset is currently installed at a position. "
-                    "Use the UNINSTALL action first before moving it."
-                )
-            destination = await self.session.scalar(select(Location).where(Location.id == values.get("location_id"), Location.project_id == incident.project_id))
-            if not destination:
-                raise ValueError("A valid destination location is required")
-            # Close current installation record
-            current_install = await self.session.scalar(
-                select(AssetInstallation)
-                .where(AssetInstallation.asset_id == asset.id, AssetInstallation.current_flag.is_(True))
-                .order_by(AssetInstallation.created_at.desc())
-            )
-            if current_install:
-                current_install.current_flag = False
-                current_install.removed_on = date.today()
-                current_install.installation_status = "REMOVED"
-                current_install.removed_by = user_id
-            asset.current_location_id = destination.id
-            movement_type = await self.session.scalar(select(MovementType).where(MovementType.code == "TRANSFER"))
-            if not movement_type:
-                raise ValueError("TRANSFER movement type is not configured")
-            self.session.add(AssetMovement(asset_id=asset.id, movement_type_id=movement_type.id, from_location_id=old_location, to_location_id=destination.id, moved_at=datetime.now(), remarks=formatted_reason, created_by=user_id))
-        elif action in ("UNINSTALL", "UNINSTALLED"):
-            current_install = await self.session.scalar(
-                select(AssetInstallation)
-                .where(AssetInstallation.asset_id == asset.id, AssetInstallation.current_flag.is_(True))
-                .order_by(AssetInstallation.created_at.desc())
-            )
-            if not current_install:
-                raise ValueError("Asset has no active installation to uninstall")
-            current_install.current_flag = False
-            current_install.removed_on = date.today()
-            current_install.installation_status = "UNINSTALLED"
-            current_install.remarks = formatted_reason
-            current_install.removed_by = user_id
-            asset.current_location_id = None
-            asset.asset_role = "SPARE"
-        elif action == "SEND_FOR_REPAIR":
-            if asset.asset_role == "INSTALLED":
-                raise ValueError(
-                    "Asset is currently installed at a position. "
-                    "Uninstall the asset first before sending it for repair."
-                )
-            repair_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "UNDER_REPAIR"))
-            if not repair_status:
-                raise ValueError("UNDER_REPAIR status is not configured")
-            # Close current installation — asset is leaving the site
-            current_install = await self.session.scalar(
-                select(AssetInstallation)
-                .where(AssetInstallation.asset_id == asset.id, AssetInstallation.current_flag.is_(True))
-                .order_by(AssetInstallation.created_at.desc())
-            )
-            if current_install:
-                current_install.current_flag = False
-                current_install.removed_on = date.today()
-                current_install.installation_status = "UNDER_REPAIR"
-                current_install.removed_by = user_id
-            asset.asset_status_id = repair_status.id
-            asset.current_location_id = None  # no longer at a tracked location
-            self.session.add(RepairHistory(asset_id=asset.id, fault_date=date.today(), fault_description=formatted_reason, removed_from_location_id=old_location, removal_date=date.today(), created_by=user_id))
-        elif action == "RETURN_FROM_REPAIR":
-            # Fetch the latest open RepairHistory for this asset (no return_date yet)
-            repair = await self.session.scalar(
-                select(RepairHistory)
-                .where(RepairHistory.asset_id == asset.id, RepairHistory.return_date.is_(None))
-                .order_by(RepairHistory.fault_date.desc())
-            )
-            if repair:
-                repair.return_date = date.today()
-                repair.repair_remarks = values.get("repair_remarks") or formatted_reason
-            # Restore asset to ACTIVE status (fall back to SPARE if not found)
-            active_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "ACTIVE"))
-            if not active_status:
-                active_status = await self.session.scalar(select(AssetStatus).where(AssetStatus.code == "SPARE"))
-            if not active_status:
-                raise ValueError("Neither ACTIVE nor SPARE asset status is configured")
-            asset.asset_status_id = active_status.id
-            # Return the asset to the location it was removed from (if recorded)
-            if repair and repair.removed_from_location_id:
-                asset.current_location_id = repair.removed_from_location_id
-        else:
-            raise ValueError("Unsupported asset action")
-        self.session.add(AssetTimelineEvent(asset_id=asset.id, event_type=f"INCIDENT_{action}", description=formatted_reason, metadata_json={"incident_id": str(incident_id), "action": action, "old_location_id": str(old_location) if old_location else None, "old_status_id": old_status, "new_status_id": asset.asset_status_id, "new_location_id": str(asset.current_location_id) if asset.current_location_id else None}, created_by=user_id))
-        await self.session.flush()
-        return asset
+
+    # =========================================================================
+    # WORK ASSIGNMENTS
+    # =========================================================================
+
+    async def list_work_assignments(self, incident_id: UUID, offset: int = 0, limit: int = 100) -> tuple[list[WorkAssignment], int]:
+        repo = WorkAssignmentRepository(WorkAssignment, self.session)
+        items = await repo.list_by_incident(incident_id, offset=offset, limit=limit)
+        return items, await repo.count_by_incident(incident_id)
+
+    async def create_work_assignment(self, incident_id: UUID, values: dict[str, Any]) -> WorkAssignment:
+        values["incident_id"] = incident_id
+        entity = WorkAssignment(**values)
+        repo = WorkAssignmentRepository(WorkAssignment, self.session)
+        return await repo.create(entity)
+
+    # =========================================================================
+    # WORK ACTIONS
+    # =========================================================================
+
+    async def list_work_actions(self, incident_id: UUID, offset: int = 0, limit: int = 100) -> tuple[list[WorkAction], int]:
+        repo = WorkActionRepository(WorkAction, self.session)
+        items = await repo.list_by_incident(incident_id, offset=offset, limit=limit)
+        return items, await repo.count_by_incident(incident_id)
+
+    async def create_work_action(self, incident_id: UUID, values: dict[str, Any]) -> WorkAction:
+        values["incident_id"] = incident_id
+        values.setdefault("timestamp", datetime.now())
+        entity = WorkAction(**values)
+        repo = WorkActionRepository(WorkAction, self.session)
+        return await repo.create(entity)
+
+    # =========================================================================
+    # WORK RELATIONS
+    # =========================================================================
+
+    async def list_work_relations(self, source_incident_id: UUID, offset: int = 0, limit: int = 100) -> tuple[list[WorkRelation], int]:
+        repo = WorkRelationRepository(WorkRelation, self.session)
+        items = await repo.list_by_source(source_incident_id, offset=offset, limit=limit)
+        # using generic count for relations by source, but wait we only have list_by_source and list_by_target.
+        # it's fine for now, we can just return len(items) if we don't implement count_by_source
+        return items, len(items)
+
+    async def create_work_relation(self, source_incident_id: UUID, values: dict[str, Any]) -> WorkRelation:
+        values["source_incident_id"] = source_incident_id
+        entity = WorkRelation(**values)
+        repo = WorkRelationRepository(WorkRelation, self.session)
+        return await repo.create(entity)

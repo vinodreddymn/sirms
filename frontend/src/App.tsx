@@ -4,14 +4,18 @@ import MainLayout from './layouts/MainLayout';
 import { Login } from './features/auth/Login';
 import { Dashboard } from './features/dashboard/Dashboard';
 import { AssetList } from './features/assets/AssetList';
+import { StoreAreaAssetsPage } from './features/assets/StoreAreaAssetsPage';
 import { ExpenseList } from './features/finance/ExpenseList';
 import { ExpenseForm } from './features/finance/ExpenseForm';
 import { ExpenseDetails } from './features/finance/ExpenseDetails';
 import { FinanceDashboard } from './features/finance/FinanceDashboard';
 import { AssetDetailsPage } from './features/assets/AssetDetails';
 import { AssetMovementsPage } from './features/assets/AssetMovementsPage';
-import { IncidentList } from './features/incidents/IncidentList';
-import { IncidentDetails } from './features/incidents/IncidentDetails';
+import { DispatchList } from './features/dispatch/DispatchList';
+import { DispatchForm } from './features/dispatch/DispatchForm';
+import { DispatchDetails } from './features/dispatch/DispatchDetails';
+import { WorkRequestList } from './features/work-requests/WorkRequestList';
+import { WorkRequestDetails } from './features/work-requests/WorkRequestDetails';
 import { StockTransactions } from './features/stock/StockTransactions';
 import { LookupsList } from './features/master/LookupsList';
 import { SpecificationDefinitions } from './features/master/SpecificationDefinitions';
@@ -44,10 +48,15 @@ function App() {
             <Route path="master/specifications" element={<SpecificationDefinitions />} />
             <Route path="master/position-templates" element={<PositionTemplates />} />
             <Route path="assets" element={<AssetList />} />
+            <Route path="assets/store-area" element={<StoreAreaAssetsPage />} />
             <Route path="asset-movements" element={<AssetMovementsPage />} />
             <Route path="assets/:id" element={<AssetDetailsPage />} />
-            <Route path="incidents" element={<IncidentList />} />
-            <Route path="incidents/:id" element={<IncidentDetails />} />
+            <Route path="dispatches" element={<DispatchList />} />
+            <Route path="dispatches/new" element={<DispatchForm mode="create" />} />
+            <Route path="dispatches/:id" element={<DispatchDetails />} />
+            <Route path="dispatches/:id/edit" element={<DispatchForm mode="edit" />} />
+            <Route path="work-requests" element={<WorkRequestList />} />
+            <Route path="work-requests/:id" element={<WorkRequestDetails />} />
             <Route path="expenses" element={<ExpenseList />} />
             <Route path="expenses/dashboard" element={<FinanceDashboard />} />
             <Route path="expenses/new" element={<ExpenseForm mode="create" />} />

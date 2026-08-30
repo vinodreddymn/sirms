@@ -3,12 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import PaginatedResponse, PaginationParams, pagination_params
 from app.db.session import get_db
-from app.models.master import LocationType, PositionType, AssetCategory, AssetSubcategory, Manufacturer, AssetModel, AssetStatus, AssetCondition, AssetLifecycle, MaintenanceType, FailureCategory, RootCauseCategory, IncidentStatus, IncidentPriority, IncidentCategory, RelationshipType, DocumentType, PhotoType, ProjectType, UserRoleTemplate, SpecificationDefinition, MovementType, StockTransactionType, ExpenseCategory, PaymentMode, PaymentStatus
+from app.models.master import LocationType, PositionType, AssetCategory, AssetSubcategory, Manufacturer, AssetModel, AssetStatus, AssetCondition, AssetLifecycle, MaintenanceType, FailureCategory, RootCauseCategory, IncidentStatus, IncidentPriority, IncidentCategory, RelationshipType, DocumentType, PhotoType, ProjectType, UserRoleTemplate, SpecificationDefinition, MovementType, StockTransactionType, ExpenseCategory, PaymentMode, PaymentStatus, WorkType, WorkOrderStatus
 from app.schemas.master import (
     LookupCreate, LookupRead, LookupUpdate,
     PositionTemplateCreate, PositionTemplateNodeCreate, PositionTemplateNodeRead,
     PositionTemplateNodeUpdate, PositionTemplateRead, PositionTemplateUpdate,
     SpecificationDefinitionCreate, SpecificationDefinitionRead, SpecificationDefinitionUpdate,
+    WorkTypeRead,
 )
 from app.services.master_service import MasterService
 
@@ -30,6 +31,8 @@ lookup_models = {
     "incident-status": IncidentStatus,
     "incident-priority": IncidentPriority,
     "incident-categories": IncidentCategory,
+    "work-types": WorkType,
+    "work-order-status": WorkOrderStatus,
 
     "relationship-types": RelationshipType,
     "document-types": DocumentType,
@@ -202,6 +205,16 @@ async def delete_template_node(
 
 
 # ─── Generic Lookup CRUD ──────────────────────────────────────────────────────
+
+@router.get("/work-types", response_model=PaginatedResponse[WorkTypeRead])
+async def list_work_types(
+    params: PaginationParams = Depends(pagination_params),
+    db: AsyncSession = Depends(get_db),
+) -> PaginatedResponse[WorkTypeRead]:
+    service = MasterService(db)
+    items, total = await service.list_work_types(offset=params.offset, limit=params.page_size)
+    return PaginatedResponse.create([WorkTypeRead.from_orm(item) for item in items], total, params)
+
 
 @router.get("/{table_name}", response_model=PaginatedResponse[LookupRead])
 async def list_lookup(

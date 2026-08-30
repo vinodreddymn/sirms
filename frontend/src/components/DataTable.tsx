@@ -6,27 +6,40 @@ export interface Column<T> {
   accessor: keyof T | ((row: T) => React.ReactNode);
   width?: string;
   sortKey?: string;
+  cell?: (value: unknown, row: T) => React.ReactNode;
+}
+
+interface PaginationConfig {
+  page: number;
+  pageSize: number;
+  totalItems?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
   loading?: boolean;
+  isLoading?: boolean;
   page?: number;
   totalPages?: number;
   totalCount?: number;
   onPageChange?: (page: number) => void;
   onRowClick?: (row: T) => void;
-  emptyMessage?: string;
+  emptyMessage?: React.ReactNode;
   sort?: string;
   order?: 'asc' | 'desc';
   onSortChange?: (sort: string) => void;
+  pagination?: PaginationConfig;
 }
 
 export function DataTable<T extends { id?: number | string }>({
   columns,
   data,
   loading = false,
+  isLoading,
   page = 1,
   totalPages = 1,
   totalCount,
@@ -35,9 +48,21 @@ export function DataTable<T extends { id?: number | string }>({
   emptyMessage = "No data found.",
   sort,
   order = 'asc',
-  onSortChange
+  onSortChange,
+  pagination,
 }: DataTableProps<T>) {
+  const resolvedLoading = loading || isLoading;
+  const resolvedPage = pagination?.page ?? page;
+  const resolvedTotalPages = pagination?.totalPages ?? totalPages;
+  const resolvedTotalCount = pagination?.totalItems ?? totalCount;
+  const handlePageChange = pagination?.onPageChange ?? onPageChange;
+
   const renderCell = (row: T, column: Column<T>) => {
+    if (column.cell) {
+      const value = typeof column.accessor === 'function' ? undefined : row[column.accessor];
+      return column.cell(value, row);
+    }
+
     if (typeof column.accessor === 'function') return column.accessor(row);
     return row[column.accessor] as React.ReactNode;
   };
@@ -65,7 +90,7 @@ export function DataTable<T extends { id?: number | string }>({
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {resolvedLoading ? (
               <tr>
                 <td colSpan={columns.length} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                   <div style={{ display: 'inline-block', width: '16px', height: '16px', border: '2px solid var(--border-color)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle', marginRight: '8px' }} />
@@ -103,25 +128,25 @@ export function DataTable<T extends { id?: number | string }>({
         </table>
       </div>
 
-      {totalPages > 1 && (
+      {resolvedTotalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            {totalCount !== undefined ? `${totalCount} total records · ` : ''}Page {page} of {totalPages}
+            {resolvedTotalCount !== undefined ? `${resolvedTotalCount} total records · ` : ''}Page {resolvedPage} of {resolvedTotalPages}
           </span>
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
             <button
               className="btn btn-secondary"
-              disabled={page <= 1}
-              onClick={() => onPageChange?.(page - 1)}
-              style={{ padding: '3px 8px', opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}
+              disabled={resolvedPage <= 1}
+              onClick={() => handlePageChange?.(resolvedPage - 1)}
+              style={{ padding: '3px 8px', opacity: resolvedPage <= 1 ? 0.4 : 1, cursor: resolvedPage <= 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}
             >
               <ChevronLeft size={14} />
             </button>
             <button
               className="btn btn-secondary"
-              disabled={page >= totalPages}
-              onClick={() => onPageChange?.(page + 1)}
-              style={{ padding: '3px 8px', opacity: page >= totalPages ? 0.4 : 1, cursor: page >= totalPages ? 'not-allowed' : 'pointer', fontSize: '12px' }}
+              disabled={resolvedPage >= resolvedTotalPages}
+              onClick={() => handlePageChange?.(resolvedPage + 1)}
+              style={{ padding: '3px 8px', opacity: resolvedPage >= resolvedTotalPages ? 0.4 : 1, cursor: resolvedPage >= resolvedTotalPages ? 'not-allowed' : 'pointer', fontSize: '12px' }}
             >
               <ChevronRight size={14} />
             </button>

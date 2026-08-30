@@ -8,7 +8,7 @@ import { Modal } from "../../components/Modal";
 import { api } from "../../services/api";
 import { useToast } from "../../contexts/ToastContext";
 import { LocationSearchSelect } from "../assets/LocationSearchSelect";
-import type { Incident, IncidentUpdate, Paginated, Lookup } from "./types";
+import type { WorkRequest, WorkRequestUpdate, Paginated, Lookup } from "./types";
 
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleString() : "—");
 const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString() : "—");
@@ -43,9 +43,9 @@ const KV: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value 
   </div>
 );
 
-const Timeline: React.FC<{ updates: IncidentUpdate[]; statuses: Lookup[]; users: any[] }> = ({ updates, statuses, users }) => (
+const Timeline: React.FC<{ updates: WorkRequestUpdate[]; statuses: Lookup[]; users: any[] }> = ({ updates, statuses, users }) => (
   <div style={{ display: "grid", gap: "0" }}>
-    {updates.length === 0 && <div style={{ color: "var(--text-secondary)" }}>No investigation updates recorded yet.</div>}
+    {updates.length === 0 && <div style={{ color: "var(--text-secondary)" }}>No work log entries recorded yet.</div>}
     {updates.map((item, i) => {
       const author = users.find(u => u.id === item.updated_by);
       const statusName = item.status_after_update_id
@@ -74,21 +74,22 @@ const Timeline: React.FC<{ updates: IncidentUpdate[]; statuses: Lookup[]; users:
 type AffectedAsset = { id: string; asset_number: string; category: string; status: string; current_location?: string | null };
 type AssetRecord = { basic_information: { asset_number: string; serial_number?: string | null; current_location?: string | null }; status: { name: string; code?: string }; category: { name: string }; model?: { name: string } | null };
 
-export const IncidentDetails: React.FC = () => {
+export const WorkRequestDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const [incident, setIncident] = useState<Incident | null>(null);
-  const [updates, setUpdates] = useState<IncidentUpdate[]>([]);
+  const [workRequest, setWorkRequest] = useState<WorkRequest | null>(null);
+  const [updates, setUpdates] = useState<WorkRequestUpdate[]>([]);
   const [statuses, setStatuses] = useState<Lookup[]>([]);
   const [assetStatuses, setAssetStatuses] = useState<Lookup[]>([]);
+  const [workTypes, setWorkTypes] = useState<Lookup[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [affectedAsset, setAffectedAsset] = useState<AssetRecord | null>(null);
   const [affectedAssets, setAffectedAssets] = useState<AffectedAsset[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Note form
+  // Work log form
   const [noteText, setNoteText] = useState("");
   const [noteStatus, setNoteStatus] = useState("");
   const [savingNote, setSavingNote] = useState(false);
@@ -100,38 +101,53 @@ export const IncidentDetails: React.FC = () => {
   const [actionLocation, setActionLocation] = useState<string | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [savingAction, setSavingAction] = useState(false);
+  const [actionPosition, setActionPosition] = useState("");
+  const [installPositions, setInstallPositions] = useState<Array<{ id: string; position_number: string }>>([]);
+
+  useEffect(() => {
+    if (action === "INSTALL" && actionLocation) {
+      api.get(`/infrastructure/locations/${actionLocation}/positions`)
+        .then(res => setInstallPositions(res.data.items || []))
+        .catch(() => setInstallPositions([]));
+    } else {
+      setInstallPositions([]);
+      setActionPosition("");
+    }
+  }, [action, actionLocation]);
 
   const load = async () => {
     if (!id) return;
     try {
-      const [incRes, updRes, statusRes, assetStatusRes, userRes] = await Promise.all([
-        api.get<Incident>(`/incidents/${id}`),
-        api.get<Paginated<IncidentUpdate>>(`/incidents/${id}/updates`, { params: { page_size: 200 } }),
+      const [wrRes, updRes, statusRes, assetStatusRes, workTypeRes, userRes] = await Promise.all([
+        api.get<WorkRequest>(`/work-requests/${id}`),
+        api.get<Paginated<WorkRequestUpdate>>(`/work-requests/${id}/updates`, { params: { page_size: 200 } }),
         api.get("/master/incident-status", { params: { page_size: 100 } }),
         api.get("/master/asset-status", { params: { page_size: 100 } }),
+        api.get("/master/work-types", { params: { page_size: 100 } }),
         api.get("/users", { params: { page_size: 100 } }),
       ]);
-      const inc = incRes.data;
-      setIncident(inc);
+      const wr = wrRes.data;
+      setWorkRequest(wr);
       setUpdates(updRes.data.items);
       setStatuses(statusRes.data.items);
       setAssetStatuses(assetStatusRes.data.items);
+      setWorkTypes(workTypeRes.data.items);
       setUsers(userRes.data.items);
-      setNoteStatus(String(inc.incident_status_id));
+      setNoteStatus(String(wr.incident_status_id));
 
-      // Load affected asset/region
-      if (inc.asset_id) {
-        const assetRes = await api.get<AssetRecord>(`/assets/${inc.asset_id}`);
+      // Load affected asset / region assets
+      if (wr.asset_id) {
+        const assetRes = await api.get<AssetRecord>(`/assets/${wr.asset_id}`);
         setAffectedAsset(assetRes.data);
         setAffectedAssets([]);
-      } else if (inc.location_id) {
-        const assetsRes = await api.get<Paginated<AffectedAsset>>("/assets", { params: { page_size: 100, project_id: inc.project_id } });
+      } else if (wr.location_id) {
+        const assetsRes = await api.get<Paginated<AffectedAsset>>("/assets", { params: { page_size: 100, project_id: wr.project_id } });
         setAffectedAssets(assetsRes.data.items);
         setAffectedAsset(null);
       }
     } catch {
-      addToast("error", "Could not load incident details.");
-      navigate("/incidents");
+      addToast("error", "Could not load work request details.");
+      navigate("/work-requests");
     } finally {
       setLoading(false);
     }
@@ -144,46 +160,53 @@ export const IncidentDetails: React.FC = () => {
     if (!noteText.trim()) return;
     const selectedStatusCode = statuses.find(s => String(s.id) === noteStatus)?.code;
     const isClosing = selectedStatusCode === "CLOSED" || selectedStatusCode === "RESOLVED";
-    
-    // In our simplified model, we use the update text for resolution remarks when closing.
     setSavingNote(true);
     try {
-      await api.post(`/incidents/${id}/updates`, {
+      await api.post(`/work-requests/${id}/updates`, {
         status_after_update_id: noteStatus ? Number(noteStatus) : null,
         update_notes: noteText,
       });
       setNoteText("");
       await load();
-      addToast("success", isClosing ? "Incident resolved/closed." : "Update recorded.");
+      addToast("success", isClosing ? "Work Request resolved/closed." : "Work log entry recorded.");
     } catch { addToast("error", "Could not save update."); }
     finally { setSavingNote(false); }
   };
 
   const applyAction = async () => {
-    if (!incident?.asset_id) return;
+    if (!workRequest?.asset_id) return;
+    if (action === "INSTALL" && !actionPosition) {
+      addToast("error", "Please select a position before recording an Install action.");
+      return;
+    }
+    if ((action === "MOVE" || action === "UNINSTALL" || action === "RETURN_FROM_REPAIR") && !actionLocation) {
+      addToast("error", "Please select a destination location.");
+      return;
+    }
     setSavingAction(true);
     try {
-      await api.post(`/incidents/${id}/asset-actions`, {
-        asset_id: incident.asset_id,
+      await api.post(`/work-requests/${id}/asset-actions`, {
+        asset_id: workRequest.asset_id,
         action,
         reason: actionReason,
         status_id: action === "CHANGE_STATUS" ? Number(actionStatus) : undefined,
-        location_id: action === "MOVE" ? actionLocation || undefined : undefined,
+        location_id: (action === "MOVE" || action === "UNINSTALL" || action === "RETURN_FROM_REPAIR") ? actionLocation || undefined : undefined,
+        location_position_id: action === "INSTALL" ? actionPosition || undefined : undefined,
       });
       setActionOpen(false);
       setActionReason("");
       await load();
-      addToast("success", "Asset action recorded against this incident.");
+      addToast("success", "Asset action recorded against this work request.");
     } catch (err: any) {
       addToast("error", err.response?.data?.detail || "Action failed.");
     } finally { setSavingAction(false); }
   };
 
-  if (loading) return <div className="glass-panel" style={{ padding: "2rem", textAlign: "center" }}>Loading incident details...</div>;
-  if (!incident) return null;
+  if (loading) return <div className="glass-panel" style={{ padding: "2rem", textAlign: "center" }}>Loading work request details...</div>;
+  if (!workRequest) return null;
 
-  const statusName = statuses.find(s => Number(s.id) === incident.incident_status_id)?.name || "Unknown";
-  const statusCode = (statuses.find(s => Number(s.id) === incident.incident_status_id) as any)?.code || "";
+  const statusName = statuses.find(s => Number(s.id) === workRequest.incident_status_id)?.name || "Unknown";
+  const statusCode = (statuses.find(s => Number(s.id) === workRequest.incident_status_id) as any)?.code || "";
   const isClosed = statusCode === "CLOSED" || statusCode === "RESOLVED";
 
   const tabs = [
@@ -192,20 +215,19 @@ export const IncidentDetails: React.FC = () => {
       label: "Overview",
       content: (
         <div style={{ display: "grid", gap: "1.25rem" }}>
-          <Panel title="Incident Summary" icon={<AlertTriangle size={16} />}>
+          <Panel title="Work Request Summary" icon={<AlertTriangle size={16} />}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "1.1rem", marginBottom: "1rem" }}>
-              <KV label="Status" value={<Badge label={statusName} color={isClosed ? "#22c55e" : "var(--accent-color)"} />} />
-              <KV label="Reported" value={fmt(incident.reported_at)} />
-              {isClosed && <KV label="Closed" value={fmtDate(incident.closed_date)} />}
-              <KV label="Target" value={incident.asset_id ? "Asset" : "Location / Region"} />
+              <KV label="Status" value={<Badge label={statusName} color={isClosed ? "#22c55e" : "var(--accent-color)"} />} />              <KV label="Work Request Type" value={workTypes.find(wt => String(wt.id) === workRequest.work_type_id)?.name || "General"} />              <KV label="Requested" value={fmt(workRequest.reported_at)} />
+              {isClosed && <KV label="Resolved" value={fmtDate(workRequest.closed_date)} />}
+              <KV label="Target" value={workRequest.asset_id ? "Asset" : workRequest.location_id ? "Location / Region" : "General"} />
             </div>
             <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem", color: "var(--text-secondary)" }}>
-              {incident.description}
+              {workRequest.description}
             </div>
-            {isClosed && incident.resolution_remarks && (
+            {isClosed && workRequest.resolution_remarks && (
               <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem", marginTop: "1rem", color: "var(--text-secondary)" }}>
                 <strong style={{ color: "var(--text-primary)" }}>Resolution Remarks:</strong>
-                <p style={{ marginTop: "0.5rem", marginBottom: 0 }}>{incident.resolution_remarks}</p>
+                <p style={{ marginTop: "0.5rem", marginBottom: 0 }}>{workRequest.resolution_remarks}</p>
               </div>
             )}
           </Panel>
@@ -214,10 +236,10 @@ export const IncidentDetails: React.FC = () => {
     },
     {
       id: "affected",
-      label: incident.asset_id ? "Affected Asset" : "Affected Region",
+      label: workRequest.asset_id ? "Affected Asset" : "Affected Region",
       content: (
         <div style={{ display: "grid", gap: "1.25rem" }}>
-          {incident.asset_id ? (
+          {workRequest.asset_id ? (
             <Panel title="Affected Asset" icon={<Package size={16} />}>
               {affectedAsset ? (
                 <>
@@ -229,7 +251,7 @@ export const IncidentDetails: React.FC = () => {
                     <KV label="Serial No." value={affectedAsset.basic_information.serial_number || "—"} />
                     <KV label="Location" value={affectedAsset.basic_information.current_location || "—"} />
                   </div>
-                  <button className="btn btn-secondary" onClick={() => navigate(`/assets/${incident.asset_id}?incident=${id}`)}>
+                  <button className="btn btn-secondary" onClick={() => navigate(`/assets/${workRequest.asset_id}?work-request=${id}`)}>
                     Open Full Asset Record
                   </button>
                 </>
@@ -241,7 +263,7 @@ export const IncidentDetails: React.FC = () => {
                 <div style={{ display: "grid", gap: "0.75rem" }}>
                   {affectedAssets.map(asset => (
                     <button key={asset.id} type="button" className="glass-panel"
-                      onClick={() => navigate(`/assets/${asset.id}?incident=${id}`)}
+                      onClick={() => navigate(`/assets/${asset.id}?work-request=${id}`)}
                       style={{ textAlign: "left", padding: "0.9rem", border: "1px solid var(--border-color)", color: "inherit", cursor: "pointer" }}>
                       <strong>{asset.asset_number}</strong>
                       <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginTop: "0.2rem" }}>
@@ -254,44 +276,45 @@ export const IncidentDetails: React.FC = () => {
             </Panel>
           )}
 
-          {incident.asset_id && (
+          {workRequest.asset_id && (
             <Panel title="Controlled Asset Actions" icon={<Wrench size={16} />}>
               <p style={{ margin: "0 0 1rem", color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                All asset changes during an incident are logged against this incident number. Direct asset editing is disabled in this context.
+                All asset changes during a work request are logged against this Work Request number. Direct asset editing is disabled in this context.
               </p>
               <button className="btn btn-primary" onClick={() => setActionOpen(true)} disabled={isClosed}>
                 Record Asset Action
               </button>
-              {isClosed && <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>Incident is closed. Asset actions are locked.</p>}
+              {isClosed && <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>Work Request is closed. Asset actions are locked.</p>}
             </Panel>
           )}
         </div>
       ),
     },
     {
-      id: "investigation",
-      label: "Investigation",
+      id: "work-log",
+      label: "Work Log",
       content: (
         <div style={{ display: "grid", gap: "1.25rem" }}>
-          <Panel title={isClosed ? "Add Final Note" : "Add Update"} icon={<FileText size={16} />}>
+          <Panel title={isClosed ? "Add Final Note" : "Add Work Log Entry"} icon={<FileText size={16} />}>
             <form onSubmit={saveNote} style={{ display: "grid", gap: "1rem" }}>
-              <Select label="Update incident status to"
+              <Select label="Update work request status to"
                 value={noteStatus}
                 onChange={e => setNoteStatus(e.target.value)}
-                options={statuses.map(s => ({ value: String(s.id), label: s.name }))} 
+                options={statuses.map(s => ({ value: String(s.id), label: s.name }))}
                 disabled={isClosed} />
-              <Input label={statuses.find(s => String(s.id) === noteStatus)?.code === "CLOSED" ? "Resolution Remarks *" : "Update notes *"} 
+              <Input
+                label={statuses.find(s => String(s.id) === noteStatus)?.code === "CLOSED" ? "Resolution Remarks *" : "Work log notes *"}
                 value={noteText}
                 onChange={e => setNoteText(e.target.value)}
                 placeholder={statuses.find(s => String(s.id) === noteStatus)?.code === "CLOSED" ? "Detailed resolution reasoning..." : "Findings, root cause, corrective actions, next steps..."}
                 required />
               <div>
-                <button className="btn btn-primary" disabled={savingNote}>{savingNote ? "Saving..." : "Add Update"}</button>
+                <button className="btn btn-primary" disabled={savingNote}>{savingNote ? "Saving..." : "Add Entry"}</button>
               </div>
             </form>
           </Panel>
 
-          <Panel title="Investigation Timeline" icon={<Clock size={16} />}>
+          <Panel title="Work Log Timeline" icon={<Clock size={16} />}>
             <Timeline updates={[...updates].reverse()} statuses={statuses} users={users} />
           </Panel>
         </div>
@@ -304,15 +327,15 @@ export const IncidentDetails: React.FC = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: "0.9rem", alignItems: "flex-start" }}>
-          <button className="btn btn-secondary" style={{ padding: "0.65rem" }} onClick={() => navigate("/incidents")}>
+          <button className="btn btn-secondary" style={{ padding: "0.65rem" }} onClick={() => navigate("/work-requests")}>
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 style={{ marginBottom: "0.25rem" }}>{incident.incident_number}</h1>
+            <h1 style={{ marginBottom: "0.25rem" }}>{workRequest.incident_number}</h1>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
               <Badge label={statusName} color={isClosed ? "#22c55e" : "var(--accent-color)"} />
               <span style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                Reported {fmt(incident.reported_at)}
+                Requested {fmt(workRequest.reported_at)}
               </span>
             </div>
           </div>
@@ -334,18 +357,19 @@ export const IncidentDetails: React.FC = () => {
         title="Record Controlled Asset Action"
         footer={<>
           <button className="btn btn-secondary" onClick={() => setActionOpen(false)} disabled={savingAction}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => void applyAction()} disabled={savingAction || !actionReason.trim()}>
+          <button className="btn btn-primary" onClick={() => void applyAction()} disabled={savingAction || !actionReason.trim() || (action === "INSTALL" && !actionPosition) || (action === "MOVE" && !actionLocation) || (action === "UNINSTALL" && !actionLocation) || (action === "RETURN_FROM_REPAIR" && !actionLocation)}>
             {savingAction ? "Recording..." : "Record Action"}
           </button>
         </>}
       >
         <p style={{ margin: "0 0 1rem", color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-          This action is logged against incident <strong>{incident.incident_number}</strong>.
+          This action is logged against work request <strong>{workRequest.incident_number}</strong>.
         </p>
-        <Select label="Action Type" value={action} onChange={e => setAction(e.target.value)}
+        <Select label="Action Type" value={action} onChange={e => { setAction(e.target.value); setActionLocation(null); setActionPosition(""); }}
           options={[
             { value: "CHANGE_STATUS", label: "Change Asset Status" },
             { value: "MOVE", label: "Move Asset to Location" },
+            { value: "INSTALL", label: "Install Asset at Position" },
             { value: "UNINSTALL", label: "Uninstall Asset from Position" },
             { value: "SEND_FOR_REPAIR", label: "Send for Repair (OEM/Vendor)" },
             { value: "RETURN_FROM_REPAIR", label: "Return from Repair" },
@@ -356,7 +380,22 @@ export const IncidentDetails: React.FC = () => {
             required />
         )}
         {action === "MOVE" && (
-          <LocationSearchSelect label="Destination Location" value={actionLocation} projectId={incident.project_id}
+          <LocationSearchSelect label="Destination Location" value={actionLocation} projectId={workRequest.project_id}
+            onChange={locId => setActionLocation(locId)} />
+        )}
+        {action === "INSTALL" && (
+          <>
+            <LocationSearchSelect label="Select Location" value={actionLocation} projectId={workRequest.project_id}
+              onChange={locId => setActionLocation(locId)} />
+            {actionLocation && (
+              <Select label="Select Position" value={actionPosition} onChange={e => setActionPosition(e.target.value)}
+                options={[{ value: "", label: "Select position" }, ...installPositions.map(p => ({ value: p.id, label: p.position_number }))]}
+                required />
+            )}
+          </>
+        )}
+        {(action === "UNINSTALL" || action === "RETURN_FROM_REPAIR") && (
+          <LocationSearchSelect label="Destination Store Location" value={actionLocation} projectId={workRequest.project_id}
             onChange={locId => setActionLocation(locId)} />
         )}
         <Input label="Reason / Notes" value={actionReason} onChange={e => setActionReason(e.target.value)}
